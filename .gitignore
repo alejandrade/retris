@@ -1,0 +1,42 @@
+# Rust
+/target
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE - IntelliJ IDEA / RustRover
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+
+# IDE - Other
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+NOTES.md
+
+# AI / LLM generated files
+.cursor/
+*.ai
+*.chat
+.copilot/
+.prompts/
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Logs
+*.log
