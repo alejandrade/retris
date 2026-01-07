@@ -4,7 +4,7 @@ A Tetris game built with Rust and the [egor](https://github.com/wick3dr0se/egor)
 
 ## Features
 
-- Classic Tetris gameplay with 7 standard pieces (I, O, T, L, J, S, Z)
+- Classic Tetris gameplay with 5 pieces (I, O, T, L, S)
 - 10×20 game grid with spawn area above the visible playfield
 - Piece rotation with wall kick mechanics
 - Line clearing when rows are completed
