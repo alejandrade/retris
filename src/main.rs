@@ -30,26 +30,6 @@ use volume_manager::VolumeManager;
 pub const SCREEN_WIDTH: u32 = 640;
 pub const SCREEN_HEIGHT: u32 = 1048;
 
-#[cfg(target_arch = "wasm32")]
-fn get_viewport_size() -> (u32, u32) {
-    if let Some(window) = web_sys::window() {
-        let width = window
-            .inner_width()
-            .and_then(|v| v.as_f64())
-            .map(|w| w as u32)
-            .unwrap_or(SCREEN_WIDTH)
-            .max(320);
-        let height = window
-            .inner_height()
-            .and_then(|v| v.as_f64())
-            .map(|h| h as u32)
-            .unwrap_or(SCREEN_HEIGHT)
-            .max(400);
-        (width, height)
-    } else {
-        (SCREEN_WIDTH, SCREEN_HEIGHT)
-    }
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn get_viewport_size() -> (u32, u32) {
