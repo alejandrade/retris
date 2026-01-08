@@ -47,3 +47,7 @@ Then open your browser to the URL shown (typically `http://localhost:8080`).
 - [`egor`](https://github.com/wick3dr0se/egor) - Cross-platform 2D graphics engine (supports native and WASM)
 - `rand` - Random number generation for piece selection
 - Fixed timestep game loop pattern
+
+## Credits
+
+- Music: 18 original tracks by [HydroGene](https://hydrogene.itch.io/)
