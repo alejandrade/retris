@@ -1,0 +1,352 @@
+use crate::retris_colors::*;
+use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use egor::input::{Input, MouseButton};
+use egor::math::vec2;
+use egor::render::Graphics;
+
+/// Button position in both coordinate systems
+pub struct ButtonPosition {
+    pub world_x: f32,    // For drawing (0,0 = center)
+    pub world_y: f32,
+    pub screen_x: f32,   // For mouse clicks (0,0 = top-left)
+    pub screen_y: f32,
+    pub size: f32,
+}
+
+impl ButtonPosition {
+    /// Create position for loading screen (below center)
+    pub fn for_loading() -> Self {
+        let size = 80.0;
+        let world_x = -size / 2.0;
+        let world_y = 120.0;
+        
+        Self {
+            world_x,
+            world_y,
+            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
+            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            size,
+        }
+    }
+    
+    /// Create position for bottom-right corner
+    pub fn for_bottom_right() -> Self {
+        let size = 50.0;
+        let padding = 15.0;
+        let world_x = (SCREEN_WIDTH as f32 / 2.0) - size - padding;
+        let world_y = (SCREEN_HEIGHT as f32 / 2.0) - size - padding;
+        
+        Self {
+            world_x,
+            world_y,
+            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
+            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            size,
+        }
+    }
+    
+    /// Create position for bottom-left corner (volume control button)
+    pub fn for_bottom_left() -> Self {
+        let size = 50.0;
+        let padding = 15.0;
+        // Bottom left: negative world_x, positive world_y
+        let world_x = -(SCREEN_WIDTH as f32 / 2.0) + padding;
+        let world_y = (SCREEN_HEIGHT as f32 / 2.0) - size - padding;
+        
+        Self {
+            world_x,
+            world_y,
+            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
+            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            size,
+        }
+    }
+}
+
+/// Simple mute button that displays a speaker icon
+pub struct MuteButton {
+    pos: ButtonPosition,
+    is_muted: bool,
+    speaker_on_texture: Option<usize>,
+    speaker_off_texture: Option<usize>,
+}
+
+impl MuteButton {
+    /// Create button for loading screen
+    pub fn for_loading() -> Self {
+        Self {
+            pos: ButtonPosition::for_loading(),
+            is_muted: false,
+            speaker_on_texture: None,
+            speaker_off_texture: None,
+        }
+    }
+    
+    /// Create button for bottom-right corner
+    pub fn for_bottom_right() -> Self {
+        Self {
+            pos: ButtonPosition::for_bottom_right(),
+            is_muted: false,
+            speaker_on_texture: None,
+            speaker_off_texture: None,
+        }
+    }
+    
+    /// Create button for bottom-left corner (volume control)
+    pub fn for_bottom_left() -> Self {
+        Self {
+            pos: ButtonPosition::for_bottom_left(),
+            is_muted: false,
+            speaker_on_texture: None,
+            speaker_off_texture: None,
+        }
+    }
+    
+    /// Load textures on first frame
+    pub fn load_textures(&mut self, gfx: &mut Graphics) {
+        if self.speaker_on_texture.is_none() {
+            self.speaker_on_texture = Some(gfx.load_texture(include_bytes!("../assets/speaker.png")));
+        }
+        if self.speaker_off_texture.is_none() {
+            self.speaker_off_texture = Some(gfx.load_texture(include_bytes!("../assets/speaker-off.png")));
+        }
+    }
+    
+    /// Check if button was clicked
+    pub fn is_clicked(&self, input: &Input) -> bool {
+        if !input.mouse_pressed(egor::input::MouseButton::Left) {
+            return false;
+        }
+        
+        let (mx, my) = input.mouse_position();
+        
+        // Use screen coordinates for mouse comparison
+        mx >= self.pos.screen_x && mx <= self.pos.screen_x + self.pos.size && 
+        my >= self.pos.screen_y && my <= self.pos.screen_y + self.pos.size
+    }
+    
+    /// Toggle mute state
+    pub fn toggle(&mut self) {
+        self.is_muted = !self.is_muted;
+    }
+    
+    /// Set mute state
+    pub fn set_muted(&mut self, muted: bool) {
+        self.is_muted = muted;
+    }
+    
+    /// Get mute state
+    pub fn is_muted(&self) -> bool {
+        self.is_muted
+    }
+    
+    /// Draw the button
+    pub fn draw(&self, gfx: &mut Graphics) {
+        // Skip if textures not loaded
+        if self.speaker_on_texture.is_none() || self.speaker_off_texture.is_none() {
+            return;
+        }
+        
+        let texture_id = if self.is_muted {
+            self.speaker_off_texture.unwrap()
+        } else {
+            self.speaker_on_texture.unwrap()
+        };
+        
+        // Use world coordinates for drawing
+        gfx.rect()
+            .at(vec2(self.pos.world_x, self.pos.world_y))
+            .size(vec2(self.pos.size, self.pos.size))
+            .texture(texture_id);
+    }
+}
+
+/// Volume slider UI component
+pub struct VolumeSlider {
+    x: f32,           // World X (center origin)
+    y: f32,           // World Y
+    width: f32,
+    height: f32,
+    value: f32,       // 0.0 to 1.0
+    dragging: bool,
+    label: String,
+    just_released: bool, // Track if mouse was just released this frame
+}
+
+impl VolumeSlider {
+    /// Create a new volume slider
+    pub fn new(x: f32, y: f32, width: f32, label: &str, initial_value: f32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height: 30.0,
+            value: initial_value.clamp(0.0, 1.0),
+            dragging: false,
+            label: label.to_string(),
+            just_released: false,
+        }
+    }
+    
+    /// Update slider (handle mouse input)
+    /// Returns true if value changed significantly
+    pub fn update(&mut self, input: &Input) -> bool {
+        let (mx, my) = input.mouse_position();
+        let mouse_pressed = input.mouse_pressed(MouseButton::Left);
+        let mouse_released = input.mouse_released(MouseButton::Left);
+        
+        // Reset just_released flag from previous frame
+        self.just_released = false;
+        
+        // Convert to screen coords for hit testing
+        let screen_x = self.x + (SCREEN_WIDTH as f32 / 2.0);
+        let screen_y = self.y + (SCREEN_HEIGHT as f32 / 2.0);
+        
+        // Check if mouse is over slider
+        let in_bounds = mx >= screen_x && mx <= screen_x + self.width &&
+                       my >= screen_y && my <= screen_y + self.height;
+        
+        // Start dragging when clicked on slider
+        if in_bounds && mouse_pressed {
+            self.dragging = true;
+        }
+        
+        // Stop dragging when mouse button is released
+        if mouse_released && self.dragging {
+            self.dragging = false;
+            self.just_released = true; // Mark that we just released
+        }
+        
+        // Update value while dragging
+        if self.dragging {
+            let relative_x = (mx - screen_x).clamp(0.0, self.width);
+            let old_value = self.value;
+            self.value = relative_x / self.width;
+            return (old_value - self.value).abs() > 0.01; // Value changed significantly
+        }
+        
+        false
+    }
+    
+    /// Check if the slider was just released this frame
+    pub fn was_just_released(&self) -> bool {
+        self.just_released
+    }
+    
+    /// Get current value (0.0 to 1.0)
+    pub fn value(&self) -> f32 {
+        self.value
+    }
+    
+    /// Draw the slider
+    pub fn draw(&self, gfx: &mut Graphics) {
+        // Draw label above slider
+        let label_size = 20.0;
+        gfx.text(&self.label)
+            .at(vec2(
+                self.x + (SCREEN_WIDTH as f32 / 2.0),
+                self.y + (SCREEN_HEIGHT as f32 / 2.0) - 25.0
+            ))
+            .size(label_size)
+            .color(COLOR_TEXT_GREEN);
+        
+        // Draw slider background (dark)
+        gfx.rect()
+            .at(vec2(self.x, self.y))
+            .size(vec2(self.width, self.height))
+            .color(COLOR_CELL_BORDER);
+        
+        // Draw slider fill (green)
+        let fill_width = self.width * self.value;
+        if fill_width > 0.0 {
+            gfx.rect()
+                .at(vec2(self.x, self.y))
+                .size(vec2(fill_width, self.height))
+                .color(COLOR_SOFTWARE_GREEN);
+        }
+        
+        // Draw slider handle
+        let handle_x = self.x + (self.width * self.value) - 5.0;
+        gfx.rect()
+            .at(vec2(handle_x, self.y - 5.0))
+            .size(vec2(10.0, self.height + 10.0))
+            .color(COLOR_TEXT_GREEN);
+        
+        // Draw percentage text
+        let percent = (self.value * 100.0) as i32;
+        let percent_text = format!("{}%", percent);
+        gfx.text(&percent_text)
+            .at(vec2(
+                self.x + self.width + 10.0 + (SCREEN_WIDTH as f32 / 2.0),
+                self.y + 5.0 + (SCREEN_HEIGHT as f32 / 2.0)
+            ))
+            .size(18.0)
+            .color(COLOR_DARK_GRAY);
+    }
+}
+
+/// Simple button UI component
+pub struct Button {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    label: String,
+}
+
+impl Button {
+    pub fn new(x: f32, y: f32, width: f32, height: f32, label: &str) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            label: label.to_string(),
+        }
+    }
+    
+    pub fn is_clicked(&self, input: &Input) -> bool {
+        if !input.mouse_pressed(MouseButton::Left) {
+            return false;
+        }
+        
+        let (mx, my) = input.mouse_position();
+        let screen_x = self.x + (SCREEN_WIDTH as f32 / 2.0);
+        let screen_y = self.y + (SCREEN_HEIGHT as f32 / 2.0);
+        
+        mx >= screen_x && mx <= screen_x + self.width &&
+        my >= screen_y && my <= screen_y + self.height
+    }
+    
+    pub fn draw(&self, gfx: &mut Graphics) {
+        // Draw button background
+        gfx.rect()
+            .at(vec2(self.x, self.y))
+            .size(vec2(self.width, self.height))
+            .color(COLOR_SOFTWARE_GREEN);
+        
+        // Draw button border
+        let border = 3.0;
+        gfx.rect()
+            .at(vec2(self.x - border, self.y - border))
+            .size(vec2(self.width + border * 2.0, self.height + border * 2.0))
+            .color(COLOR_TEXT_GREEN);
+        
+        // Draw button background again (on top of border)
+        gfx.rect()
+            .at(vec2(self.x, self.y))
+            .size(vec2(self.width, self.height))
+            .color(COLOR_SOFTWARE_GREEN);
+        
+        // Draw label
+        let label_size = 24.0;
+        let estimated_width = self.label.len() as f32 * label_size * 0.5;
+        gfx.text(&self.label)
+            .at(vec2(
+                self.x + (self.width - estimated_width) / 2.0 + (SCREEN_WIDTH as f32 / 2.0),
+                self.y + (self.height - label_size) / 2.0 + (SCREEN_HEIGHT as f32 / 2.0)
+            ))
+            .size(label_size)
+            .color(COLOR_CELL_BORDER);
+    }
+}
