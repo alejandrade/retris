@@ -44,7 +44,11 @@ jobs:
 
       - name: Install Trunk
         run: |
-          cargo install trunk --locked
+          if ! command -v trunk &> /dev/null; then
+            cargo install trunk --locked
+          else
+            echo "Trunk is already installed, skipping installation"
+          fi
 
       - name: Build with Trunk
         run: trunk build
