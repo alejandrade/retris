@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::music_manager::MusicManager;
 use crate::retris_colors::*;
 use crate::retris_ui::{Button, VolumeSlider};
@@ -47,6 +48,7 @@ impl VolumeControlScreen {
         sound_manager: &mut SoundManager,
         volume_manager: &VolumeManager,
     ) -> bool {
+        music_manager.stop();
         // Update test sound timer
         self.test_sound_timer += delta;
 
@@ -82,15 +84,23 @@ impl VolumeControlScreen {
         }
 
         // Return true if user clicked Close button
-        self.close_button.is_clicked(input)
+        if self.close_button.is_clicked(input) {
+            music_manager.start();
+            true
+        } else {
+            false
+        }
     }
 
     /// Draw the volume control screen
     pub fn draw(&self, gfx: &mut Graphics) {
+        let coords =
+            CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+
         // Draw semi-transparent background overlay
         // Since (0,0) is center, we need to position from top-left corner
         let overlay_size = vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
-        let overlay_pos = vec2(-(SCREEN_WIDTH as f32 / 2.0), -(SCREEN_HEIGHT as f32 / 2.0));
+        let overlay_pos = coords.top_left_world();
         gfx.rect()
             .at(overlay_pos)
             .size(overlay_size)
@@ -116,16 +126,11 @@ impl VolumeControlScreen {
         size: f32,
         color: egor::render::Color,
     ) {
-        let chars_per_pixel = 0.5;
-        let estimated_width = text.len() as f32 * size * chars_per_pixel;
+        let coords =
+            CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let world_x = coords.center_text_x(text, size, 0.5);
+        let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 
-        let world_x = -estimated_width / 2.0;
-        let screen_x = world_x + (SCREEN_WIDTH as f32 / 2.0);
-        let screen_y = world_y + (SCREEN_HEIGHT as f32 / 2.0);
-
-        gfx.text(text)
-            .at(vec2(screen_x, screen_y))
-            .size(size)
-            .color(color);
+        gfx.text(text).at(screen_pos).size(size).color(color);
     }
 }

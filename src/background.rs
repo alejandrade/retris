@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::retris_colors::COLOR_BACKGROUND;
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::math::vec2;
@@ -21,14 +22,17 @@ pub struct Background {
 
 impl Background {
     pub fn new(star_count: usize) -> Self {
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let half_width = coords.screen_width() / 2.0;
+        let half_height = coords.screen_height() / 2.0;
+        
         let mut rng = rand::rng();
         let mut stars = Vec::new();
 
         for _ in 0..star_count {
             stars.push(Star {
-                x: rng.random_range(-((SCREEN_WIDTH / 2) as f32)..((SCREEN_WIDTH / 2) as f32)),
-                y: rng
-                    .random_range(-((SCREEN_HEIGHT / 2) as f32)..((SCREEN_HEIGHT / 2) as f32)),
+                x: rng.random_range(-half_width..half_width),
+                y: rng.random_range(-half_height..half_height),
                 size: rng.random_range(1.0..4.0),
                 velocity_x: rng.random_range(-10.0..10.0), // Gentle drift speed
                 velocity_y: rng.random_range(-10.0..10.0),
@@ -46,8 +50,9 @@ impl Background {
     pub fn update(&mut self, delta: f32) {
         self.elapsed_time += delta;
         
-        let half_width = (SCREEN_WIDTH / 2) as f32;
-        let half_height = (SCREEN_HEIGHT / 2) as f32;
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let half_width = coords.screen_width() / 2.0;
+        let half_height = coords.screen_height() / 2.0;
 
         for star in self.stars.iter_mut() {
             // Update position with gentle drift

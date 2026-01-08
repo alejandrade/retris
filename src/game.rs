@@ -37,6 +37,7 @@ pub struct Game {
     score_manager: ScoreManager,
     ui: GameUI,
     state: GameState,
+    pub is_gameover: bool,
 }
 
 impl Game {
@@ -53,6 +54,7 @@ impl Game {
             score_manager: ScoreManager::new(),
             ui: GameUI::new(),
             state: GameState::Playing,
+            is_gameover: false,
         }
     }
 
@@ -61,7 +63,7 @@ impl Game {
             GameState::LevelTransition { timer } => {
                 // Update cascade animation
                 let new_timer = timer + fixed_delta;
-                
+
                 if new_timer >= LEVEL_TRANSITION_DURATION {
                     // Transition complete - resume playing
                     self.state = GameState::Playing;
@@ -70,10 +72,17 @@ impl Game {
                 } else {
                     // Continue cascade animation
                     self.state = GameState::LevelTransition { timer: new_timer };
-                    self.grid.update_cascade_animation(new_timer / LEVEL_TRANSITION_DURATION);
+                    self.grid
+                        .update_cascade_animation(new_timer / LEVEL_TRANSITION_DURATION);
                 }
             }
             GameState::Playing => {
+                // Check for game over condition (blocks in spawn area)
+                if self.grid.has_blocks_in_spawn_area() {
+                    self.is_gameover = true;
+                    return;
+                }
+
                 self.grid.update(input, fixed_delta);
 
                 // Check if we need to spawn a new piece first (before updating)
@@ -94,25 +103,25 @@ impl Game {
                     if piece.stopped {
                         // Play bounce sound when piece lands
                         sound_manager.play_bounce();
-                        
+
                         let cells_with_colors = piece.get_occupied_cells_with_color();
                         self.grid.mark_cells_occupied(&cells_with_colors);
-                        
+
                         // Clear completed lines and update score
                         let lines_cleared = self.grid.clear_completed_lines();
-                        
+
                         if lines_cleared > 0 {
                             // Play success sound when lines cleared
                             sound_manager.play_success();
-                            
-                            // Award points for clearing lines
+
+                            // Award points for clearing lines (need mutable reference)
                             let old_level = self.score_manager.level();
-                            let points = self.score_manager.on_rows_cleared(lines_cleared as u32);
+                            let points = self.score_manager_mut().on_rows_cleared(lines_cleared as u32);
                             let new_level = self.score_manager.level();
                             let combo = self.score_manager.combo_count();
                             let multiplier = self.score_manager.multiplier();
                             let total_score = self.score_manager.score();
-                            
+
                             // Show different messages for special clears
                             let clear_name = match lines_cleared {
                                 1 => "Single",
@@ -121,7 +130,7 @@ impl Game {
                                 4 => "🎆 TETRIS",
                                 _ => "Multi",
                             };
-                            
+
                             // Add level indicator for high levels
                             let level_indicator = if new_level >= 20 {
                                 " 🚀"
@@ -132,7 +141,7 @@ impl Game {
                             } else {
                                 ""
                             };
-                            
+
                             if combo > 2 {
                                 println!("🔥💥 {} COMBO! {}{} +{} points! ({}x next) [Lv{} | Total: {}]", 
                                     combo, clear_name, level_indicator, points, multiplier, new_level, total_score);
@@ -143,7 +152,7 @@ impl Game {
                                 println!("{}{} cleared! +{} points ({}x next) [Lv{} | Total: {}]", 
                                     clear_name, level_indicator, points, multiplier, new_level, total_score);
                             }
-                            
+
                             // Check for level up
                             if new_level > old_level {
                                 sound_manager.play_level_up();
@@ -163,7 +172,6 @@ impl Game {
     }
 
     fn start_level_transition(&mut self) {
-        println!("🎉 LEVEL UP! Now level {}", self.score_manager.level());
         self.state = GameState::LevelTransition { timer: 0.0 };
         self.active_piece = None; // Clear active piece during transition
         self.grid.start_cascade_animation();
@@ -192,14 +200,14 @@ impl Game {
 
     pub fn draw(&mut self, gfx: &mut Graphics, alpha: f32) {
         // Draw UI first so it appears behind the grid and pieces
-        
+
         // Draw grid and pieces on top
         self.grid.draw(gfx, alpha);
 
         if let Some(ref mut piece) = self.active_piece {
             piece.draw(gfx, alpha);
         }
-        
+
         self.ui.draw(gfx, &self.score_manager);
     }
 

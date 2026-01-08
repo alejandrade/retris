@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::music_manager::{LoadingState, MusicManager};
 use crate::retris_colors::*;
 use crate::retris_ui::{Button, MuteButton, VolumeSlider};
@@ -25,6 +26,8 @@ pub struct LoadingScreen {
     mute_button: MuteButton,
     test_sound_timer: f32, // Track how long test sound has been playing
     skip_volume_config: bool, // True if user already has saved settings
+    loading_start_time: f32, // Track when loading started to ensure minimum display time
+    min_loading_duration: f32, // Minimum time to show loading screen (in seconds)
 }
 
 
@@ -50,6 +53,8 @@ impl LoadingScreen {
             mute_button: MuteButton::for_loading(),
             test_sound_timer: 0.0,
             skip_volume_config,
+            loading_start_time: 0.0,
+            min_loading_duration: 0.5, // Show loading screen for at least 0.5 seconds
         }
     }
 
@@ -61,16 +66,31 @@ impl LoadingScreen {
             self.dots_count = (self.dots_count + 1) % 4;
         }
         
-        // Check if first song loaded - transition to appropriate state
+        // Track loading start time on first update
+        if self.state == LoadingScreenState::Loading && self.loading_start_time == 0.0 {
+            self.loading_start_time = 0.0; // Will be set to current time, but we track elapsed instead
+        }
+        
+        // Check if loading is complete or at least one song is loaded - transition to appropriate state
+        // But only if minimum display time has passed
         if self.state == LoadingScreenState::Loading {
-            if let LoadingState::Loading { current, total: _ } = music_manager.loading_state() {
-                if current >= 1 {
-                    // Skip volume config if user already has saved settings
-                    if self.skip_volume_config {
-                        self.state = LoadingScreenState::Ready;
-                    } else {
-                        self.state = LoadingScreenState::VolumeConfig;
-                    }
+            let elapsed = self.dots_timer; // Use dots_timer as a simple elapsed time tracker
+            let min_time_passed = elapsed >= self.min_loading_duration;
+            
+            let loading_done = match music_manager.loading_state() {
+                LoadingState::Loading { current, total: _ } => current >= 1,
+                LoadingState::Complete => true,
+                LoadingState::Failed(_) => true,
+                LoadingState::NotStarted => false,
+            };
+            
+            // Only transition if loading is done AND minimum time has passed
+            if loading_done && min_time_passed {
+                // Skip volume config if user already has saved settings
+                if self.skip_volume_config {
+                    self.state = LoadingScreenState::Ready;
+                } else {
+                    self.state = LoadingScreenState::VolumeConfig;
                 }
             }
         }
@@ -175,19 +195,16 @@ impl LoadingScreen {
         size: f32,
         color: egor::render::Color,
     ) {
-        // Estimate text width for centering
-        let chars_per_pixel = 0.5;
-        let estimated_width = text.len() as f32 * size * chars_per_pixel;
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         
         // Calculate world-space position (centered at x=0)
-        let world_x = -estimated_width / 2.0;
+        let world_x = coords.center_text_x(text, size, 0.5);
         
         // Convert world coordinates to screen coordinates
-        let screen_x = world_x + (SCREEN_WIDTH as f32 / 2.0);
-        let screen_y = world_y + (SCREEN_HEIGHT as f32 / 2.0);
+        let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 
         gfx.text(text)
-            .at(vec2(screen_x, screen_y))
+            .at(screen_pos)
             .size(size)
             .color(color);
     }

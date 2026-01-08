@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::game_data::ScoreManager;
 use crate::retris_colors::*;
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -21,6 +22,9 @@ impl GameUI {
         let lines = score_manager.lines_cleared();
         let multiplier = score_manager.multiplier();
         let combo = score_manager.combo_count();
+
+        // Draw "Press Q to quit game" at the top of the screen
+        self.draw_centered_text(gfx, "Press Q to quit game", -450.0, 20.0, COLOR_DARK_GRAY);
 
         // Draw large score in the center
         let score_text = format!("{}", score);
@@ -64,20 +68,16 @@ impl GameUI {
         size: f32,
         color: egor::render::Color,
     ) {
-        // Estimate text width for centering
-        let chars_per_pixel = 0.5; // Estimate: each character is ~0.5 * font_size wide
-        let estimated_width = text.len() as f32 * size * chars_per_pixel;
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         
         // Calculate world-space position (centered at x=0)
-        let world_x = -estimated_width / 2.0;
+        let world_x = coords.center_text_x(text, size, 0.5);
         
         // Convert world coordinates to screen coordinates
-        // World (0,0) is at screen center
-        let screen_x = world_x + (SCREEN_WIDTH as f32 / 2.0);
-        let screen_y = world_y + (SCREEN_HEIGHT as f32 / 2.0);
+        let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 
         gfx.text(text)
-            .at(vec2(screen_x, screen_y))
+            .at(screen_pos)
             .size(size)
             .color(color);
     }

@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::retris_colors::*;
 use crate::tetris_shape::{ShapeName, TetrisShapeNode};
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -215,21 +216,17 @@ impl TitleScreen {
         if self.high_score > 0 {
             let text = format!("Your highest score: {}", self.high_score);
             let text_size = 28.0;
-            
-            // Estimate text width for centering
-            let chars_per_pixel = 0.5;
-            let estimated_width = text.len() as f32 * text_size * chars_per_pixel;
+            let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
             
             // Position below the title (in world coordinates)
-            let world_x = -estimated_width / 2.0;
+            let world_x = coords.center_text_x(&text, text_size, 0.5);
             let world_y = TARGET_Y + 100.0;
             
             // Convert to screen coordinates
-            let screen_x = world_x + (SCREEN_WIDTH as f32 / 2.0);
-            let screen_y = world_y + (SCREEN_HEIGHT as f32 / 2.0);
+            let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
             
             gfx.text(&text)
-                .at(vec2(screen_x, screen_y))
+                .at(screen_pos)
                 .size(text_size)
                 .color(COLOR_TEXT_GREEN);
         }
@@ -252,30 +249,22 @@ impl TitleScreen {
         let line_height = 35.0;
         let start_y = instructions_y;
 
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        
         for (i, line) in instructions.iter().enumerate() {
             if line.is_empty() {
                 continue;
             }
 
-            // Text API uses screen-space coordinates (0,0 at top-left)
-            // But our game uses world-space coordinates (0,0 at center)
-            // Convert from world-space to screen-space:
-            // screen_x = world_x + SCREEN_WIDTH/2
-            // screen_y = world_y + SCREEN_HEIGHT/2
-
-            let chars_per_pixel = 0.5; // Estimate: each character is ~0.5 * font_size wide
-            let estimated_width = line.len() as f32 * text_size * chars_per_pixel;
-
             // Calculate world-space position (centered at x=0)
-            let world_x = -estimated_width / 2.0;
+            let world_x = coords.center_text_x(line, text_size, 0.5);
             let world_y = start_y + i as f32 * line_height;
 
             // Convert to screen-space coordinates
-            let screen_x = world_x + (SCREEN_WIDTH as f32 / 2.0);
-            let screen_y = world_y + (SCREEN_HEIGHT as f32 / 2.0);
+            let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 
             gfx.text(line)
-                .at(vec2(screen_x, screen_y))
+                .at(screen_pos)
                 .size(text_size)
                 .color(COLOR_TEXT_GREEN);
         }

@@ -1,6 +1,8 @@
 mod background;
+mod coordinate_system;
 mod game;
 mod game_data;
+mod game_over_screen;
 mod game_ui;
 mod grid;
 mod loading_screen;
@@ -18,6 +20,7 @@ use background::Background;
 use egor::app::*;
 use egor::input::KeyCode;
 use game::Game;
+use game_over_screen::{GameOverAction, GameOverScreen};
 use loading_screen::LoadingScreen;
 use music_manager::MusicManager;
 use retris_ui::MuteButton;
@@ -35,17 +38,27 @@ enum GameState {
     Title,
     Playing,
     VolumeControl,
+    GameOver,
 }
 
 fn main() {
-    let mut state = GameState::Loading;
+    // Initialize panic hook for better error messages in WASM
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
+
+    let mut state = GameState::VolumeControl;
     let mut title_screen = TitleScreen::new();
     let mut game: Option<Game> = None;
     let mut background = Background::new(100);
+    let mut was_focused = true;
+    let mut unfocused_timer: Option<f32> = None;
+    let mut muted_due_to_unfocused = false; // Track if we muted due to unfocused timeout
+    let mut audio_context_resumed = false; // Track if audio context has been resumed (required for WASM)
+    const UNFOCUSED_MUTE_DELAY: f32 = 15.0; // seconds
 
     // Create shared volume manager
     let volume_manager = VolumeManager::new();
-    let mut loading_screen = LoadingScreen::new(&volume_manager);
+    //let mut loading_screen = LoadingScreen::new(&volume_manager);
 
     // Create sound manager and start loading in background (loads quickly)
     let mut sound_manager =
@@ -67,11 +80,16 @@ fn main() {
     let mut volume_control_screen = VolumeControlScreen::new(&volume_manager);
     let mut previous_state = GameState::Title; // Track state before opening volume control
 
+    // Create game over screen
+    let game_over_screen = GameOverScreen::new();
+
     App::new()
         .title("Retris")
         .screen_size_centered(SCREEN_WIDTH, SCREEN_HEIGHT)
         .vsync(true)
         .run(move |gfx, input, timer| {
+            let is_focused = input.has_focus();
+
             // Load textures on first frame
             if timer.frame == 0 {
                 mute_button_small.load_textures(gfx);
@@ -84,30 +102,39 @@ fn main() {
             match state {
                 GameState::Loading => {
                     // Update loading screen
-                    loading_screen.update(
-                        timer.delta,
-                        input,
-                        &mut music_manager,
-                        &mut sound_manager,
-                        &volume_manager,
-                    );
-
-                    // Draw loading screen
-                    let loading_state = music_manager.loading_state();
-                    loading_screen.draw(gfx, &loading_state);
-
-                    // Check if user clicked OK to continue
-                    if loading_screen.is_ready_to_continue(input) {
-                        // Start music
-                        if !music_manager.is_muted() {
-                            music_manager.start();
-                        }
-                        state = GameState::Title;
-                    }
+                    // loading_screen.update(
+                    //     timer.delta,
+                    //     input,
+                    //     &mut music_manager,
+                    //     &mut sound_manager,
+                    //     &volume_manager,
+                    // );
+                    //
+                    // // Draw loading screen
+                    // let loading_state = music_manager.loading_state();
+                    // loading_screen.draw(gfx, &loading_state);
+                    //
+                    // // Check if user clicked OK to continue
+                    // if loading_screen.is_ready_to_continue(input) {
+                    //     // Start music (will check muted internally)
+                    //     music_manager.start();
+                    //     state = GameState::Title;
+                    // }
                 }
                 GameState::Title => {
                     // Update music (check for song transitions)
                     music_manager.update();
+
+                    // Play sounds for title screen interactions
+                    if input.key_pressed(KeyCode::ArrowLeft)
+                        || input.key_pressed(KeyCode::ArrowRight)
+                        || input.key_pressed(KeyCode::ArrowDown)
+                    {
+                        sound_manager.play_bounce();
+                    }
+                    if input.key_pressed(KeyCode::Space) {
+                        sound_manager.play_shuffle();
+                    }
 
                     title_screen.update(input, timer.delta);
                     title_screen.draw(gfx, timer.delta);
@@ -131,6 +158,25 @@ fn main() {
                     if let Some(ref mut g) = game {
                         g.update(input, timer.delta, &mut sound_manager);
                         g.draw(gfx, timer.delta);
+
+                        // Check for game over condition
+                        if g.is_gameover {
+                            // Save high score if this is a new record
+                            let current_score = g.score_manager().score();
+                            let high_score = g.score_manager().high_score();
+                            if current_score > high_score {
+                                // Save to storage
+                                use crate::storage::{GameData, Storage};
+                                Storage::save_game_data(&GameData {
+                                    high_score: current_score,
+                                });
+                                // Update high score in score manager
+                                g.score_manager_mut().set_high_score(current_score);
+                            }
+                            // Play game over song (stops other music)
+                            music_manager.play_game_over_song();
+                            state = GameState::GameOver;
+                        }
                     }
 
                     // Handle mute button toggle
@@ -139,9 +185,8 @@ fn main() {
                         let is_muted = mute_button_small.is_muted();
                         music_manager.set_muted(is_muted);
                         sound_manager.set_muted(is_muted);
-                        if !is_muted {
-                            music_manager.start();
-                        }
+                        // Start music (will check muted internally)
+                        music_manager.start();
                     }
 
                     // Draw volume control button in bottom left
@@ -159,9 +204,41 @@ fn main() {
                     }
 
                     // Return to title on Escape
-                    if input.key_pressed(KeyCode::Escape) {
+                    if input.key_pressed(KeyCode::Escape) || input.key_pressed(KeyCode::KeyQ) {
                         game = None;
                         state = GameState::Title;
+                    }
+                }
+                GameState::GameOver => {
+                    // Update music (check for song transitions)
+                    music_manager.update();
+
+                    // Handle game over screen actions
+                    match game_over_screen.update(input) {
+                        GameOverAction::Quit => {
+                            // Exit the application
+                            std::process::exit(0);
+                        }
+                        GameOverAction::BackToMenu => {
+                            // Resume regular playlist when returning to menu (will check muted internally)
+                            music_manager.start();
+                            game = None;
+                            state = GameState::Title;
+                        }
+                        GameOverAction::Retry => {
+                            // Resume regular playlist when retrying (will check muted internally)
+                            music_manager.start();
+                            game = Some(Game::new());
+                            state = GameState::Playing;
+                        }
+                        GameOverAction::None => {
+                            // Continue showing game over screen
+                        }
+                    }
+
+                    // Draw game over screen with score details
+                    if let Some(ref g) = game {
+                        game_over_screen.draw(gfx, g.score_manager());
                     }
                 }
                 GameState::VolumeControl => {
@@ -171,9 +248,8 @@ fn main() {
                         let is_muted = mute_button_small.is_muted();
                         music_manager.set_muted(is_muted);
                         sound_manager.set_muted(is_muted);
-                        if !is_muted {
-                            music_manager.start();
-                        }
+                        // Start music (will check muted internally)
+                        music_manager.start();
                     }
                     mute_button_small.draw(gfx);
                     if volume_control_screen.update(
@@ -184,6 +260,40 @@ fn main() {
                         &volume_manager,
                     ) {
                         state = previous_state;
+                    }
+                }
+            }
+            if is_focused != was_focused {
+                if !is_focused {
+                    // Just lost focus - start the timer
+                    unfocused_timer = Some(0.0);
+                    muted_due_to_unfocused = false; // Reset flag
+                } else {
+                    // Regained focus - cancel timer
+                    unfocused_timer = None;
+                    // Only unmute and restart if we muted due to the unfocused timeout
+                    if muted_due_to_unfocused {
+                        music_manager.set_muted(false);
+                        sound_manager.set_muted(false);
+                        music_manager.start();
+                        muted_due_to_unfocused = false;
+                    }
+                    // Otherwise music was never muted, so nothing to do
+                }
+                was_focused = is_focused;
+            }
+
+            // Update unfocused timer and mute if delay has passed
+            if !is_focused {
+                if let Some(ref mut elapsed) = unfocused_timer {
+                    *elapsed += timer.delta;
+                    if *elapsed >= UNFOCUSED_MUTE_DELAY {
+                        // 15 seconds have passed - now mute
+                        music_manager.set_muted(true);
+                        sound_manager.set_muted(true);
+                        muted_due_to_unfocused = true; // Mark that we muted due to timeout
+                        // Clear timer so we don't keep setting muted every frame
+                        unfocused_timer = None;
                     }
                 }
             }

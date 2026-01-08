@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeSettings {
@@ -28,6 +29,10 @@ impl Default for GameData {
     }
 }
 
+// Static caches for loaded data (declared after types are defined)
+static VOLUME_CACHE: Mutex<Option<VolumeSettings>> = Mutex::new(None);
+static GAME_DATA_CACHE: Mutex<Option<GameData>> = Mutex::new(None);
+
 /// Platform-agnostic storage for game settings
 pub struct Storage;
 
@@ -36,16 +41,34 @@ impl Storage {
     const GAME_DATA_KEY: &'static str = "retris_game_data";
     
     /// Load volume settings from storage (localStorage on web, file on native)
+    /// Results are cached after first load for performance
     pub fn load_volume() -> VolumeSettings {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Self::load_volume_web().unwrap_or_default()
+        // Check cache first
+        if let Ok(cache) = VOLUME_CACHE.lock() {
+            if let Some(cached) = cache.as_ref() {
+                return cached.clone();
+            }
         }
         
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            Self::load_volume_native().unwrap_or_default()
+        // Load from storage
+        let settings = {
+            #[cfg(target_arch = "wasm32")]
+            {
+                Self::load_volume_web().unwrap_or_default()
+            }
+            
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                Self::load_volume_native().unwrap_or_default()
+            }
+        };
+        
+        // Update cache
+        if let Ok(mut cache) = VOLUME_CACHE.lock() {
+            *cache = Some(settings.clone());
         }
+        
+        settings
     }
     
     /// Check if volume settings exist in storage (returns true if settings were previously saved)
@@ -62,6 +85,7 @@ impl Storage {
     }
     
     /// Save volume settings to storage
+    /// Also updates the cache with the new settings
     pub fn save_volume(settings: &VolumeSettings) {
         #[cfg(target_arch = "wasm32")]
         {
@@ -72,22 +96,46 @@ impl Storage {
         {
             let _ = Self::save_volume_native(settings);
         }
+        
+        // Update cache with the saved settings
+        if let Ok(mut cache) = VOLUME_CACHE.lock() {
+            *cache = Some(settings.clone());
+        }
     }
     
     /// Load game data from storage (high score, etc.)
+    /// Results are cached after first load for performance
     pub fn load_game_data() -> GameData {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Self::load_game_data_web().unwrap_or_default()
+        // Check cache first
+        if let Ok(cache) = GAME_DATA_CACHE.lock() {
+            if let Some(cached) = cache.as_ref() {
+                return cached.clone();
+            }
         }
         
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            Self::load_game_data_native().unwrap_or_default()
+        // Load from storage
+        let data = {
+            #[cfg(target_arch = "wasm32")]
+            {
+                Self::load_game_data_web().unwrap_or_default()
+            }
+            
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                Self::load_game_data_native().unwrap_or_default()
+            }
+        };
+        
+        // Update cache
+        if let Ok(mut cache) = GAME_DATA_CACHE.lock() {
+            *cache = Some(data.clone());
         }
+        
+        data
     }
     
     /// Save game data to storage
+    /// Also updates the cache with the new data
     pub fn save_game_data(data: &GameData) {
         #[cfg(target_arch = "wasm32")]
         {
@@ -97,6 +145,25 @@ impl Storage {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let _ = Self::save_game_data_native(data);
+        }
+        
+        // Update cache with the saved data
+        if let Ok(mut cache) = GAME_DATA_CACHE.lock() {
+            *cache = Some(data.clone());
+        }
+    }
+    
+    /// Clear the volume settings cache (forces next load to read from storage)
+    pub fn clear_volume_cache() {
+        if let Ok(mut cache) = VOLUME_CACHE.lock() {
+            *cache = None;
+        }
+    }
+    
+    /// Clear the game data cache (forces next load to read from storage)
+    pub fn clear_game_data_cache() {
+        if let Ok(mut cache) = GAME_DATA_CACHE.lock() {
+            *cache = None;
         }
     }
     

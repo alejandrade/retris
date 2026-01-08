@@ -323,4 +323,18 @@ impl Grid {
         self.cascading_cells.clear();
         // Grid is now empty and ready for next level
     }
+
+    /// Check if any cells are occupied in the spawn area (above the visible playfield)
+    /// Returns true if game over condition is met (blocks in spawn area)
+    pub fn has_blocks_in_spawn_area(&self) -> bool {
+        // Check rows 0 to SPAWN_ROWS-1 (the spawn area above visible playfield)
+        for row in 0..(SPAWN_ROWS as i32) {
+            for col in 0..(self.width as i32) {
+                if self.occupied_cells.has(col, row) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }

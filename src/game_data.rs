@@ -387,6 +387,13 @@ impl ScoreManager {
         
         self.score += points;
 
+        // Check if this is a new high score and save immediately
+        if self.score > self.high_score {
+            self.high_score = self.score;
+            self.high_score_needs_sync = true;
+            self.save_high_score();
+        }
+
         // Set the multiplier for the NEXT clear based on this clear
         // This creates insane compounding:
         // - Clear 4 rows -> 15x multiplier for next clear
@@ -414,6 +421,16 @@ impl ScoreManager {
         self.level != old_level
     }
 
+    /// Save the current high score to storage
+    /// This is called automatically when a new high score is achieved
+    fn save_high_score(&self) {
+        use crate::storage::{Storage, GameData};
+        Storage::save_game_data(&GameData {
+            high_score: self.high_score,
+        });
+        println!("💾 Saved new high score: {}", self.high_score);
+    }
+
     /// Reset the score, level, and multiplier (for new game)
     /// Updates high score if current score beats it and saves to storage
     pub fn reset(&mut self) {
@@ -421,12 +438,7 @@ impl ScoreManager {
         if self.score > self.high_score {
             self.high_score = self.score;
             self.high_score_needs_sync = true;
-            
-            // Save to local storage immediately
-            use crate::storage::{Storage, GameData};
-            Storage::save_game_data(&GameData {
-                high_score: self.high_score,
-            });
+            self.save_high_score();
         }
 
         self.score = 0;

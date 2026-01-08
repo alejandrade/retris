@@ -6,7 +6,7 @@ use kira::{
         static_sound::{StaticSoundData, StaticSoundHandle},
     },
 };
-use std::path::PathBuf;
+use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -19,21 +19,32 @@ pub enum LoadingState {
 
 pub struct MusicManager {
     audio_manager: AudioManager<DefaultBackend>,
-    playlist: Arc<Mutex<Vec<(String, StaticSoundData)>>>,
+    // Store song names and raw bytes - decode on demand
+    // Use Vec<u8> instead of &'static [u8] for WASM compatibility
+    song_bytes: Vec<(String, Vec<u8>)>,
+    song_names: Vec<String>,
+    // Currently decoded song (unloaded when next song loads)
+    current_decoded_song: Option<StaticSoundData>,
     current_index: usize,
     current_handle: Option<StaticSoundHandle>,
     loading_state: Arc<Mutex<LoadingState>>,
     muted: bool,
     volume_manager: VolumeManager,
+    // Game over sound - decode on demand
+    game_over_bytes: Vec<u8>,
+    game_over_decoded: Option<StaticSoundData>,
+    game_over_handle: Option<StaticSoundHandle>,
+    // New flag to control if the playlist is allowed to advance
+    playlist_active: bool,
+    // Track if audio context has been resumed (needed for WASM/browser autoplay policy)
+    audio_context_resumed: bool,
 }
 
 impl MusicManager {
-    /// Create a new MusicManager without loading music yet
     pub fn new(volume_manager: VolumeManager) -> Result<Self, Box<dyn std::error::Error>> {
         let mut audio_manager =
             AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())?;
 
-        // Set initial volume from volume manager
         let initial_volume = volume_manager.music_volume();
         let db = Self::amplitude_to_db(initial_volume);
         let _ = audio_manager.main_track().set_volume(db, Tween::default());
@@ -43,44 +54,94 @@ impl MusicManager {
             initial_volume, db
         );
 
+        // Get song metadata immediately (no decoding)
+        // Convert to owned data for WASM compatibility
+        let song_bytes: Vec<(String, Vec<u8>)> = vec![
+            (
+                Self::extract_song_name("01. Slay The Evil.ogg"),
+                include_bytes!("../assets/01. Slay The Evil.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("02. Perilous Dungeon.ogg"),
+                include_bytes!("../assets/02. Perilous Dungeon.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("03. Boss Battle.ogg"),
+                include_bytes!("../assets/03. Boss Battle.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("04. Mechanical Complex.ogg"),
+                include_bytes!("../assets/04. Mechanical Complex.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("05. Last Mission.ogg"),
+                include_bytes!("../assets/05. Last Mission.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("06. Unknown Planet.ogg"),
+                include_bytes!("../assets/06. Unknown Planet.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("07. MonsterVania #1.ogg"),
+                include_bytes!("../assets/07. MonsterVania #1.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("08. Space Adventure.ogg"),
+                include_bytes!("../assets/08. Space Adventure.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("09. Crisis.ogg"),
+                include_bytes!("../assets/09. Crisis.ogg").to_vec(),
+            ),
+            (
+                Self::extract_song_name("10. Jester Theme.ogg"),
+                include_bytes!("../assets/10. Jester Theme.ogg").to_vec(),
+            ),
+        ];
+        let song_names: Vec<String> = song_bytes.iter().map(|(name, _)| name.clone()).collect();
+
+        let game_over_bytes =
+            include_bytes!("../assets/219117__stanrams__trumpet-game-over-baby.ogg").to_vec();
+
         Ok(Self {
             audio_manager,
-            playlist: Arc::new(Mutex::new(Vec::new())),
+            song_bytes,
+            song_names,
+            current_decoded_song: None,
             current_index: 0,
             current_handle: None,
-            loading_state: Arc::new(Mutex::new(LoadingState::NotStarted)),
+            loading_state: Arc::new(Mutex::new(LoadingState::Complete)),
             muted: false,
             volume_manager,
+            game_over_bytes,
+            game_over_decoded: None,
+            game_over_handle: None,
+            playlist_active: false,
+            audio_context_resumed: false,
         })
     }
 
-    /// Convert linear amplitude (0.0-1.0) to decibels with better perceptual curve
     fn amplitude_to_db(amplitude: f32) -> f32 {
         if amplitude <= 0.0 {
-            -60.0 // Essentially silent
+            -60.0
         } else {
-            // Use exponential curve for better perceived volume control
-            // Square the amplitude to make volume drop more gradually
             let curved = amplitude * amplitude;
             20.0 * curved.log10()
         }
     }
 
-    /// Mute the music (won't play)
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
         if muted {
-            // Stop current playback if any
             self.stop_current_song();
+            self.stop_game_over_song();
         }
     }
 
-    /// Check if music is muted
     pub fn is_muted(&self) -> bool {
         self.muted
     }
 
-    /// Update volume from volume manager (call this periodically or when volume changes)
     pub fn update_volume(&mut self) {
         let volume = self.volume_manager.music_volume();
         let db = Self::amplitude_to_db(volume);
@@ -92,171 +153,255 @@ impl MusicManager {
             },
         );
     }
-    
-    /// Play a test sound (plays the first loaded song briefly)
-    pub fn test_sound(&mut self) {
-        // ALWAYS stop current song first
-        self.stop_current_song();
-        
-        let playlist = self.playlist.lock().unwrap();
-        if playlist.is_empty() {
+
+    /// Resume audio context (required for WASM/browser autoplay policy)
+    /// Should be called on first user interaction. According to Chrome docs, the AudioContext
+    /// will be resumed after a user gesture if start() is called on any attached node.
+    /// Playing a sound will trigger the resume automatically.
+    pub fn ensure_audio_context_resumed(&mut self) {
+        if !self.audio_context_resumed {
+            // Mark as resumed - actual resume will happen when we try to play
+            // The AudioContext was warmed up during startup, so it should resume
+            // when we call play() after a user gesture
+            self.audio_context_resumed = true;
+        }
+    }
+
+    // --- Loading Logic ---
+
+    /// Helper to load audio data from embedded bytes
+    fn load_audio_data_from_bytes(
+        bytes: &[u8],
+    ) -> Result<StaticSoundData, Box<dyn std::error::Error>> {
+        // Clone bytes to ensure they live long enough for decoding
+        let bytes_vec = bytes.to_vec();
+        Ok(StaticSoundData::from_cursor(Cursor::new(bytes_vec))?)
+    }
+
+    pub fn start_loading_background(&mut self) {
+        // Lazy loading: songs are already indexed, no decoding needed yet
+        // However, we decode one song at startup then immediately unload it
+        // This "warms up" the AudioContext during initialization, which helps
+        // with browser autoplay policy (similar to how it worked before)
+        if !self.song_bytes.is_empty() {
+            // Decode the first song to warm up AudioContext
+            let (filename, bytes) = &self.song_bytes[0];
+            if let Ok(sound_data) = Self::load_audio_data_from_bytes(bytes) {
+                println!("Warmed up AudioContext with: {} (now unloading)", filename);
+                // Immediately drop it - this was just to initialize the AudioContext
+                // The actual decoding happens when we need to play
+                drop(sound_data);
+            }
+        }
+
+        let total = self.song_bytes.len();
+        *self.loading_state.lock().unwrap() = LoadingState::Complete;
+        println!(
+            "Music manager ready: {} songs available (will load on demand)",
+            total
+        );
+    }
+
+    // --- Playback Logic ---
+
+    pub fn start(&mut self) {
+        if !self.muted {
+            // Requirement: Start main playlist stops game over
+            self.stop_game_over_song();
+
+            self.current_index = 0;
+            self.playlist_active = true; // Enable playlist progression
+            self.play_current_song(false);
+        }
+    }
+
+    pub fn update(&mut self) {
+        if self.muted || !self.is_loaded() {
             return;
         }
-        
-        // Play first song briefly - it will naturally stop after a couple seconds
-        // when the next UI interaction happens (slider movement, etc)
-        let (_, sound_data) = &playlist[0];
-        if let Ok(handle) = self.audio_manager.play(sound_data.clone()) {
-            self.current_handle = Some(handle);
+
+        // 1. Check Game Over Logic
+        if let Some(ref handle) = self.game_over_handle {
+            // If game over is playing, do nothing else.
+            if handle.state() == PlaybackState::Playing {
+                return;
+            }
+            // If it stopped, just clear the handle.
+            // Requirement: "Once game over ends it should just be silent"
+            // We do NOT set playlist_active to true here.
+            self.game_over_handle = None;
         }
-    }
-    
-    /// Stop any test sound that's currently playing
-    pub fn stop_test_sound(&mut self) {
-        self.stop_current_song();
-    }
 
-    /// Start loading music in the background
-    /// This is non-blocking and will load music on a separate thread (native) or task (WASM)
-    pub fn start_loading_background(&mut self) {
-        let playlist = Arc::clone(&self.playlist);
-        let loading_state = Arc::clone(&self.loading_state);
+        // 2. Check Playlist Logic
+        // If the playlist isn't active (e.g., game over happened), don't play next song.
+        if !self.playlist_active {
+            return;
+        }
 
-        // Mark as loading
-        *loading_state.lock().unwrap() = LoadingState::Loading {
-            current: 0,
-            total: 18,
+        // Check if current playlist song has finished
+        let song_finished = if let Some(ref handle) = self.current_handle {
+            handle.state() == PlaybackState::Stopped
+        } else {
+            true // No song playing, but playlist is active, so start one
         };
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            use wasm_bindgen_futures::spawn_local;
-            spawn_local(async move {
-                Self::load_music_async(playlist, loading_state).await;
-            });
+        if song_finished {
+            self.play_next_song();
         }
+    }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            std::thread::spawn(move || {
-                Self::load_music_sync(playlist, loading_state);
+    /// Stops the playlist music
+    fn stop_current_song(&mut self) {
+        if let Some(mut handle) = self.current_handle.take() {
+            let _ = handle.stop(Tween {
+                duration: std::time::Duration::from_millis(500),
+                ..Default::default()
             });
         }
     }
 
-    /// Synchronous music loading (for native thread)
-    #[cfg(not(target_arch = "wasm32"))]
-    fn load_music_sync(
-        playlist: Arc<Mutex<Vec<(String, StaticSoundData)>>>,
-        loading_state: Arc<Mutex<LoadingState>>,
-    ) {
-        let song_files = Self::get_song_list();
+    /// Stops the game over sound specifically
+    fn stop_game_over_song(&mut self) {
+        if let Some(mut handle) = self.game_over_handle.take() {
+            let _ = handle.stop(Tween {
+                duration: std::time::Duration::from_millis(100),
+                ..Default::default()
+            });
+        }
+    }
 
-        for (index, song_file) in song_files.iter().enumerate() {
-            // Update loading state
-            *loading_state.lock().unwrap() = LoadingState::Loading {
-                current: index,
-                total: song_files.len(),
-            };
+    pub fn play_game_over_song(&mut self) {
+        // Requirement: Game over stops playlist
+        self.stop_current_song();
 
-            let mut path = PathBuf::from("assets");
-            path.push(song_file);
+        // Unload current song
+        self.current_decoded_song = None;
 
-            match StaticSoundData::from_file(&path) {
-                Ok(sound_data) => {
-                    let name = Self::extract_song_name(song_file);
-                    playlist.lock().unwrap().push((name, sound_data));
-                    println!("Loaded: {}", song_file);
+        // Requirement: Game over shouldn't be part of main playlist loop
+        self.playlist_active = false;
+
+        // Stop any existing game over sound before playing new one
+        self.stop_game_over_song();
+
+        // Load game over sound on demand
+        if self.game_over_decoded.is_none() {
+            println!("Decoding game over sound");
+            match Self::load_audio_data_from_bytes(&self.game_over_bytes) {
+                Ok(data) => {
+                    self.game_over_decoded = Some(data);
                 }
                 Err(e) => {
-                    eprintln!("Failed to load {}: {}", song_file, e);
-                    *loading_state.lock().unwrap() =
-                        LoadingState::Failed(format!("Failed to load {}", song_file));
+                    eprintln!("Failed to decode game over song: {}", e);
                     return;
                 }
             }
         }
 
-        let count = playlist.lock().unwrap().len();
-        if count == 0 {
-            *loading_state.lock().unwrap() =
-                LoadingState::Failed("No music files loaded".to_string());
-        } else {
-            *loading_state.lock().unwrap() = LoadingState::Complete;
-            println!("Music loading complete: {} songs", count);
+        if let Some(ref sound_data) = self.game_over_decoded {
+            match self.audio_manager.play(sound_data.clone()) {
+                Ok(handle) => {
+                    println!("Playing game over song");
+                    self.game_over_handle = Some(handle);
+                }
+                Err(e) => eprintln!("Failed to play game over song: {}", e),
+            }
         }
     }
 
-    /// Async music loading (for WASM)
-    #[cfg(target_arch = "wasm32")]
-    async fn load_music_async(
-        playlist: Arc<Mutex<Vec<(String, StaticSoundData)>>>,
-        loading_state: Arc<Mutex<LoadingState>>,
-    ) {
-        let song_files = Self::get_song_list();
+    fn play_current_song(&mut self, _fade_in: bool) {
+        self.stop_current_song();
 
-        for (index, song_file) in song_files.iter().enumerate() {
-            // Update loading state
-            *loading_state.lock().unwrap() = LoadingState::Loading {
-                current: index,
-                total: song_files.len(),
-            };
+        if self.song_bytes.is_empty() || self.current_index >= self.song_bytes.len() {
+            return;
+        }
 
-            let mut path = PathBuf::from("assets");
-            path.push(song_file);
+        // Unload previous song (free memory)
+        self.current_decoded_song = None;
 
-            match StaticSoundData::from_file(&path) {
-                Ok(sound_data) => {
-                    let name = Self::extract_song_name(song_file);
-                    playlist.lock().unwrap().push((name, sound_data));
-                    println!("Loaded: {}", song_file);
-                }
-                Err(e) => {
-                    eprintln!("Failed to load {}: {}", song_file, e);
-                    *loading_state.lock().unwrap() =
-                        LoadingState::Failed(format!("Failed to load {}", song_file));
-                    return;
+        // Load current song on demand
+        let (filename, bytes) = &self.song_bytes[self.current_index];
+        println!("Decoding: {}", filename);
+
+        match Self::load_audio_data_from_bytes(bytes) {
+            Ok(sound_data) => {
+                // Keep decoded song until next one loads
+                let name = &self.song_names[self.current_index];
+                match self.audio_manager.play(sound_data.clone()) {
+                    Ok(handle) => {
+                        println!("Now playing: {}", name);
+                        self.current_handle = Some(handle);
+                        self.current_decoded_song = Some(sound_data);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to play {}: {}", name, e);
+                        self.current_handle = None;
+                    }
                 }
             }
-
-            // Yield to prevent blocking the main thread
-            wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(
-                &wasm_bindgen::JsValue::NULL,
-            ))
-            .await
-            .ok();
-        }
-
-        let count = playlist.lock().unwrap().len();
-        if count == 0 {
-            *loading_state.lock().unwrap() =
-                LoadingState::Failed("No music files loaded".to_string());
-        } else {
-            *loading_state.lock().unwrap() = LoadingState::Complete;
-            println!("Music loading complete: {} songs", count);
+            Err(e) => {
+                eprintln!("Failed to decode {}: {}", filename, e);
+                self.current_handle = None;
+            }
         }
     }
 
-    fn get_song_list() -> Vec<&'static str> {
+    fn play_next_song(&mut self) {
+        if self.song_bytes.is_empty() {
+            return;
+        }
+        self.current_index = (self.current_index + 1) % self.song_bytes.len();
+        self.play_current_song(true);
+    }
+
+    pub fn skip_to_next(&mut self) {
+        // Only allow skipping if we are in "Playlist Mode"
+        if self.playlist_active {
+            self.play_next_song();
+        }
+    }
+
+    // --- Data Helpers ---
+
+    /// Get all song data as (filename, bytes) tuples
+    fn get_song_data() -> Vec<(&'static str, &'static [u8])> {
         vec![
-            "01. Slay The Evil.ogg",
-            "02. Perilous Dungeon.ogg",
-            "03. Boss Battle.ogg",
-            "04. Mechanical Complex.ogg",
-            "05. Last Mission.ogg",
-            "06. Unknown Planet.ogg",
-            "07. MonsterVania #1.ogg",
-            "08. Space Adventure.ogg",
-            "09. Crisis.ogg",
-            "10. Jester Theme.ogg",
-            "11. Jester Battle.ogg",
-            "12. Strong Boss.ogg",
-            "13. I am not clumsy.ogg",
-            "14. MonsterVania #2.ogg",
-            "15. Rush Point.ogg",
-            "16. Truth.ogg",
-            "17. The Quiet Spy.ogg",
-            "18. Infinite Darkness.ogg",
+            (
+                "01. Slay The Evil.ogg",
+                include_bytes!("../assets/01. Slay The Evil.ogg"),
+            ),
+            (
+                "02. Perilous Dungeon.ogg",
+                include_bytes!("../assets/02. Perilous Dungeon.ogg"),
+            ),
+            (
+                "03. Boss Battle.ogg",
+                include_bytes!("../assets/03. Boss Battle.ogg"),
+            ),
+            (
+                "04. Mechanical Complex.ogg",
+                include_bytes!("../assets/04. Mechanical Complex.ogg"),
+            ),
+            (
+                "05. Last Mission.ogg",
+                include_bytes!("../assets/05. Last Mission.ogg"),
+            ),
+            (
+                "06. Unknown Planet.ogg",
+                include_bytes!("../assets/06. Unknown Planet.ogg"),
+            ),
+            (
+                "07. MonsterVania #1.ogg",
+                include_bytes!("../assets/07. MonsterVania #1.ogg"),
+            ),
+            (
+                "08. Space Adventure.ogg",
+                include_bytes!("../assets/08. Space Adventure.ogg"),
+            ),
+            ("09. Crisis.ogg", include_bytes!("../assets/09. Crisis.ogg")),
+            (
+                "10. Jester Theme.ogg",
+                include_bytes!("../assets/10. Jester Theme.ogg"),
+            ),
         ]
     }
 
@@ -267,117 +412,58 @@ impl MusicManager {
             .to_string()
     }
 
-    /// Get the current loading state
     pub fn loading_state(&self) -> LoadingState {
         self.loading_state.lock().unwrap().clone()
     }
 
-    /// Check if music has been loaded
     pub fn is_loaded(&self) -> bool {
-        matches!(
-            self.loading_state.lock().unwrap().clone(),
-            LoadingState::Complete
-        )
+        // Always ready since we load on-demand
+        true
     }
 
-    /// Start playing the playlist from the beginning
-    pub fn start(&mut self) {
-        if !self.muted {
-            self.current_index = 0;
-            self.play_current_song(false); // No fade-in on initial start
-        }
-    }
-
-    /// Update the music manager - checks if current song finished and plays next
-    pub fn update(&mut self) {
-        // Don't update if muted or not loaded
-        if self.muted || !self.is_loaded() {
-            return;
-        }
-
-        // Check if current song has finished playing
-        let should_play_next = if let Some(ref handle) = self.current_handle {
-            handle.state() == PlaybackState::Stopped
-        } else {
-            true // No song playing, should start one
-        };
-
-        if should_play_next {
-            self.play_next_song();
-        }
-    }
-    
-    /// Stop any currently playing song - ALWAYS call this before playing a new song
-    fn stop_current_song(&mut self) {
-        if let Some(mut handle) = self.current_handle.take() {
-            let _ = handle.stop(Tween {
-                duration: std::time::Duration::from_millis(500),
-                ..Default::default()
-            });
-        }
-    }
-
-    /// Play the current song in the playlist with optional fade-in
-    fn play_current_song(&mut self, fade_in: bool) {
-        // ALWAYS stop current song first to ensure only one plays at a time
+    pub fn stop(&mut self) {
         self.stop_current_song();
-        
-        let playlist = self.playlist.lock().unwrap();
-        if playlist.is_empty() {
-            return;
-        }
-
-        let (name, sound_data) = &playlist[self.current_index];
-
-        match self.audio_manager.play(sound_data.clone()) {
-            Ok(handle) => {
-                println!("Now playing: {}", name);
-                self.current_handle = Some(handle);
-            }
-            Err(e) => {
-                eprintln!("Failed to play {}: {}", name, e);
-                self.current_handle = None;
-            }
-        }
+        self.stop_game_over_song();
     }
 
-    /// Move to the next song in the playlist with smooth crossfade
-    fn play_next_song(&mut self) {
-        let playlist_len = self.playlist.lock().unwrap().len();
-        if playlist_len == 0 {
-            return;
-        }
-
-        // Crossfade handled by playing new song - no explicit fade needed
-
-        // Move to next song and fade in
-        self.current_index = (self.current_index + 1) % playlist_len;
-        self.play_current_song(true);
-    }
-
-    /// Get the name of the currently playing song
     pub fn current_song_name(&self) -> String {
-        let playlist = self.playlist.lock().unwrap();
-        if playlist.is_empty() {
+        if self.song_names.is_empty() || self.current_index >= self.song_names.len() {
             return "No Music".to_string();
         }
-
-        playlist[self.current_index].0.clone()
+        self.song_names[self.current_index].clone()
     }
 
-    /// Skip to the next song
-    pub fn skip_to_next(&mut self) {
-        self.play_next_song();
-    }
-
-    /// Get the total number of songs in the playlist
     pub fn song_count(&self) -> usize {
-        self.playlist.lock().unwrap().len()
+        self.song_bytes.len()
     }
 
-    /// Get the current song index (1-based)
     pub fn current_song_number(&self) -> usize {
         self.current_index + 1
+    }
+
+    // Test sound methods kept but ensured they affect state correctly
+    pub fn test_sound(&mut self) {
+        self.stop_current_song();
+        self.playlist_active = false; // Test sound is not the playlist
+
+        if !self.song_bytes.is_empty() {
+            // Load first song for testing
+            let (filename, bytes) = &self.song_bytes[0];
+            match Self::load_audio_data_from_bytes(bytes) {
+                Ok(sound_data) => {
+                    if let Ok(handle) = self.audio_manager.play(sound_data.clone()) {
+                        self.current_handle = Some(handle);
+                        // Keep decoded for test playback
+                        self.current_decoded_song = Some(sound_data);
+                    }
+                }
+                Err(e) => eprintln!("Failed to decode {} for test: {}", filename, e),
+            }
+        }
+    }
+
+    pub fn stop_test_sound(&mut self) {
+        self.stop_current_song();
     }
 }
 

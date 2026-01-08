@@ -1,3 +1,4 @@
+use crate::coordinate_system::CoordinateSystem;
 use crate::retris_colors::*;
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::{Input, MouseButton};
@@ -16,48 +17,57 @@ pub struct ButtonPosition {
 impl ButtonPosition {
     /// Create position for loading screen (below center)
     pub fn for_loading() -> Self {
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         let size = 80.0;
         let world_x = -size / 2.0;
         let world_y = 120.0;
+        let world_pos = vec2(world_x, world_y);
+        let screen_pos = coords.world_to_screen(world_pos);
         
         Self {
             world_x,
             world_y,
-            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
-            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            screen_x: screen_pos.x,
+            screen_y: screen_pos.y,
             size,
         }
     }
     
     /// Create position for bottom-right corner
     pub fn for_bottom_right() -> Self {
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         let size = 50.0;
         let padding = 15.0;
-        let world_x = (SCREEN_WIDTH as f32 / 2.0) - size - padding;
-        let world_y = (SCREEN_HEIGHT as f32 / 2.0) - size - padding;
+        let world_x = coords.screen_width() / 2.0 - size - padding;
+        let world_y = coords.screen_height() / 2.0 - size - padding;
+        let world_pos = vec2(world_x, world_y);
+        let screen_pos = coords.world_to_screen(world_pos);
         
         Self {
             world_x,
             world_y,
-            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
-            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            screen_x: screen_pos.x,
+            screen_y: screen_pos.y,
             size,
         }
     }
     
     /// Create position for bottom-left corner (volume control button)
     pub fn for_bottom_left() -> Self {
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         let size = 50.0;
         let padding = 15.0;
         // Bottom left: negative world_x, positive world_y
-        let world_x = -(SCREEN_WIDTH as f32 / 2.0) + padding;
-        let world_y = (SCREEN_HEIGHT as f32 / 2.0) - size - padding;
+        let world_x = -coords.screen_width() / 2.0 + padding;
+        let world_y = coords.screen_height() / 2.0 - size - padding;
+        let world_pos = vec2(world_x, world_y);
+        let screen_pos = coords.world_to_screen(world_pos);
         
         Self {
             world_x,
             world_y,
-            screen_x: world_x + (SCREEN_WIDTH as f32 / 2.0),
-            screen_y: world_y + (SCREEN_HEIGHT as f32 / 2.0),
+            screen_x: screen_pos.x,
+            screen_y: screen_pos.y,
             size,
         }
     }
@@ -199,8 +209,10 @@ impl VolumeSlider {
         self.just_released = false;
         
         // Convert to screen coords for hit testing
-        let screen_x = self.x + (SCREEN_WIDTH as f32 / 2.0);
-        let screen_y = self.y + (SCREEN_HEIGHT as f32 / 2.0);
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let screen_pos = coords.world_to_screen(vec2(self.x, self.y));
+        let screen_x = screen_pos.x;
+        let screen_y = screen_pos.y;
         
         // Check if mouse is over slider
         let in_bounds = mx >= screen_x && mx <= screen_x + self.width &&
@@ -240,13 +252,14 @@ impl VolumeSlider {
     
     /// Draw the slider
     pub fn draw(&self, gfx: &mut Graphics) {
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        
         // Draw label above slider
         let label_size = 20.0;
+        let label_world_pos = vec2(self.x, self.y - 25.0);
+        let label_screen_pos = coords.world_to_screen(label_world_pos);
         gfx.text(&self.label)
-            .at(vec2(
-                self.x + (SCREEN_WIDTH as f32 / 2.0),
-                self.y + (SCREEN_HEIGHT as f32 / 2.0) - 25.0
-            ))
+            .at(label_screen_pos)
             .size(label_size)
             .color(COLOR_TEXT_GREEN);
         
@@ -275,11 +288,10 @@ impl VolumeSlider {
         // Draw percentage text
         let percent = (self.value * 100.0) as i32;
         let percent_text = format!("{}%", percent);
+        let percent_world_pos = vec2(self.x + self.width + 10.0, self.y + 5.0);
+        let percent_screen_pos = coords.world_to_screen(percent_world_pos);
         gfx.text(&percent_text)
-            .at(vec2(
-                self.x + self.width + 10.0 + (SCREEN_WIDTH as f32 / 2.0),
-                self.y + 5.0 + (SCREEN_HEIGHT as f32 / 2.0)
-            ))
+            .at(percent_screen_pos)
             .size(18.0)
             .color(COLOR_DARK_GRAY);
     }
@@ -311,8 +323,10 @@ impl Button {
         }
         
         let (mx, my) = input.mouse_position();
-        let screen_x = self.x + (SCREEN_WIDTH as f32 / 2.0);
-        let screen_y = self.y + (SCREEN_HEIGHT as f32 / 2.0);
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let screen_pos = coords.world_to_screen(vec2(self.x, self.y));
+        let screen_x = screen_pos.x;
+        let screen_y = screen_pos.y;
         
         mx >= screen_x && mx <= screen_x + self.width &&
         my >= screen_y && my <= screen_y + self.height
@@ -339,13 +353,16 @@ impl Button {
             .color(COLOR_SOFTWARE_GREEN);
         
         // Draw label
+        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
         let label_size = 24.0;
         let estimated_width = self.label.len() as f32 * label_size * 0.5;
+        let label_world_pos = vec2(
+            self.x + (self.width - estimated_width) / 2.0,
+            self.y + (self.height - label_size) / 2.0
+        );
+        let label_screen_pos = coords.world_to_screen(label_world_pos);
         gfx.text(&self.label)
-            .at(vec2(
-                self.x + (self.width - estimated_width) / 2.0 + (SCREEN_WIDTH as f32 / 2.0),
-                self.y + (self.height - label_size) / 2.0 + (SCREEN_HEIGHT as f32 / 2.0)
-            ))
+            .at(label_screen_pos)
             .size(label_size)
             .color(COLOR_CELL_BORDER);
     }
