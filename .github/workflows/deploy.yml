@@ -51,7 +51,7 @@ jobs:
           fi
 
       - name: Build with Trunk
-        run: trunk build
+        run: trunk build --release
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
