@@ -1,0 +1,3 @@
+# Force cargo to always fetch git dependencies fresh
+[net]
+offline = false
