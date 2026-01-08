@@ -1,4 +1,6 @@
 [build]
+# Output directory for built artifacts
+dist = "dist"
 # Enable debug symbols for better error messages
 release = false
 
