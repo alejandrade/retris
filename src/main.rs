@@ -78,11 +78,10 @@ fn main() {
     // Create game over screen
     let game_over_screen = GameOverScreen::new();
 
-    let (initial_width, initial_height) = get_viewport_size();
 
     App::new()
         .title("Retris")
-        .screen_size_centered(initial_width, initial_height)
+        .screen_size_centered(SCREEN_WIDTH, SCREEN_HEIGHT)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();

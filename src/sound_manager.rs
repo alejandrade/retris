@@ -1,6 +1,5 @@
 use crate::volume_manager::VolumeManager;
 use kira::{AudioManager, DefaultBackend, Tween, sound::static_sound::StaticSoundData};
-use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
 /// Manages game sound effects (not music)
@@ -16,7 +15,6 @@ struct SoundEffects {
     level_up: Option<StaticSoundData>,
     shuffle: Option<StaticSoundData>,
     success: Option<StaticSoundData>,
-    loaded: bool,
 }
 
 impl SoundManager {
@@ -41,7 +39,6 @@ impl SoundManager {
                 level_up: None,
                 shuffle: None,
                 success: None,
-                loaded: false,
             })),
             muted: false,
             volume_manager,
@@ -71,52 +68,6 @@ impl SoundManager {
                 ..Default::default()
             },
         );
-    }
-
-    /// Load sounds synchronously using embedded bytes
-    fn load_sounds_sync(sounds: Arc<Mutex<SoundEffects>>) {
-        let mut effects = SoundEffects {
-            bounce: None,
-            level_up: None,
-            shuffle: None,
-            success: None,
-            loaded: false,
-        };
-
-        // Load bounce sound
-        let bounce_bytes = include_bytes!("../assets/bounce.ogg");
-        if let Ok(sound) = StaticSoundData::from_cursor(Cursor::new(bounce_bytes)) {
-            effects.bounce = Some(sound);
-            println!("Loaded: bounce.ogg");
-        }
-
-        // Load level up sound
-        let level_up_bytes = include_bytes!("../assets/level-up.ogg");
-        if let Ok(sound) = StaticSoundData::from_cursor(Cursor::new(level_up_bytes)) {
-            effects.level_up = Some(sound);
-            println!("Loaded: level-up.ogg");
-        }
-
-        // Load shuffle sound
-        let shuffle_bytes = include_bytes!("../assets/shufle.ogg");
-        if let Ok(sound) = StaticSoundData::from_cursor(Cursor::new(shuffle_bytes)) {
-            effects.shuffle = Some(sound);
-            println!("Loaded: shufle.ogg");
-        }
-
-        // Load success sound
-        let success_bytes = include_bytes!("../assets/success.ogg");
-        if let Ok(sound) = StaticSoundData::from_cursor(Cursor::new(success_bytes)) {
-            effects.success = Some(sound);
-            println!("Loaded: success.ogg");
-        }
-
-        effects.loaded = true;
-
-        // Update shared state
-        if let Ok(mut shared) = sounds.lock() {
-            *shared = effects;
-        }
     }
 
     /// Play bounce sound (piece lands)
