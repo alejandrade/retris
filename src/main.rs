@@ -31,10 +31,6 @@ pub const SCREEN_WIDTH: u32 = 640;
 pub const SCREEN_HEIGHT: u32 = 1048;
 
 
-#[cfg(not(target_arch = "wasm32"))]
-fn get_viewport_size() -> (u32, u32) {
-    (SCREEN_WIDTH, SCREEN_HEIGHT)
-}
 
 #[derive(Clone, Copy, PartialEq)]
 enum GameState {
