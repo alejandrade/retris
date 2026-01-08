@@ -30,6 +30,32 @@ use volume_manager::VolumeManager;
 pub const SCREEN_WIDTH: u32 = 640;
 pub const SCREEN_HEIGHT: u32 = 1048;
 
+#[cfg(target_arch = "wasm32")]
+fn get_viewport_size() -> (u32, u32) {
+    if let Some(window) = web_sys::window() {
+        let width = window
+            .inner_width()
+            .and_then(|v| v.as_f64())
+            .map(|w| w as u32)
+            .unwrap_or(SCREEN_WIDTH)
+            .max(320);
+        let height = window
+            .inner_height()
+            .and_then(|v| v.as_f64())
+            .map(|h| h as u32)
+            .unwrap_or(SCREEN_HEIGHT)
+            .max(400);
+        (width, height)
+    } else {
+        (SCREEN_WIDTH, SCREEN_HEIGHT)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_viewport_size() -> (u32, u32) {
+    (SCREEN_WIDTH, SCREEN_HEIGHT)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum GameState {
     Title,
@@ -59,13 +85,10 @@ fn main() {
     // Create sound manager and start loading in background (loads quickly)
     let mut sound_manager =
         SoundManager::new(volume_manager.clone()).expect("Failed to create sound manager");
-    sound_manager.start_loading_background();
-
+    sound_manager.play_bounce();
     // Create music manager and start loading in background
     let mut music_manager =
         MusicManager::new(volume_manager.clone()).expect("Failed to create music manager");
-    music_manager.start_loading_background();
-
     // Create small mute button for bottom right
     let mut mute_button_small = MuteButton::for_bottom_right();
 
@@ -79,9 +102,11 @@ fn main() {
     // Create game over screen
     let game_over_screen = GameOverScreen::new();
 
+    let (initial_width, initial_height) = get_viewport_size();
+
     App::new()
         .title("Retris")
-        .screen_size_centered(SCREEN_WIDTH, SCREEN_HEIGHT)
+        .screen_size_centered(initial_width, initial_height)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();

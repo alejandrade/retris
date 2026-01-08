@@ -155,29 +155,6 @@ impl MusicManager {
         Ok(StaticSoundData::from_cursor(Cursor::new(bytes_vec))?)
     }
 
-    pub fn start_loading_background(&mut self) {
-        // Lazy loading: songs are already indexed, no decoding needed yet
-        // However, we decode one song at startup then immediately unload it
-        // This "warms up" the AudioContext during initialization, which helps
-        // with browser autoplay policy (similar to how it worked before)
-        if !self.song_bytes.is_empty() {
-            // Decode the first song to warm up AudioContext
-            let (filename, bytes) = &self.song_bytes[0];
-            if let Ok(sound_data) = Self::load_audio_data_from_bytes(bytes) {
-                println!("Warmed up AudioContext with: {} (now unloading)", filename);
-                // Immediately drop it - this was just to initialize the AudioContext
-                // The actual decoding happens when we need to play
-                drop(sound_data);
-            }
-        }
-
-        let total = self.song_bytes.len();
-        *self.loading_state.lock().unwrap() = LoadingState::Complete;
-        println!(
-            "Music manager ready: {} songs available (will load on demand)",
-            total
-        );
-    }
 
     // --- Playback Logic ---
 
@@ -372,12 +349,5 @@ impl MusicManager {
 
     pub fn stop_test_sound(&mut self) {
         self.stop_current_song();
-    }
-}
-
-impl Default for MusicManager {
-    fn default() -> Self {
-        let volume_manager = VolumeManager::new();
-        Self::new(volume_manager).expect("Failed to create music manager")
     }
 }

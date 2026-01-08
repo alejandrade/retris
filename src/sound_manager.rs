@@ -73,25 +73,6 @@ impl SoundManager {
         );
     }
 
-    pub fn start_loading_background(&mut self) {
-        // Warm up AudioContext by loading and playing one sound at startup
-        // This helps with browser autoplay policy - AudioContext gets initialized during startup
-        let bounce_bytes = include_bytes!("../assets/bounce.ogg");
-        if let Ok(sound_data) = StaticSoundData::from_cursor(Cursor::new(bounce_bytes)) {
-            // Try to play it immediately to warm up the AudioContext
-            // This will help resume the context when user interacts
-            if let Ok(_handle) = self.audio_manager.play(sound_data.clone()) {
-                println!("Warmed up AudioContext by playing bounce.ogg");
-            } else {
-                println!("Warmed up AudioContext by loading bounce.ogg (play will resume after user gesture)");
-            }
-        }
-
-        // Now load all sounds normally
-        let sounds = self.sounds.clone();
-        Self::load_sounds_sync(sounds);
-    }
-
     /// Load sounds synchronously using embedded bytes
     fn load_sounds_sync(sounds: Arc<Mutex<SoundEffects>>) {
         let mut effects = SoundEffects {
@@ -196,14 +177,5 @@ impl SoundManager {
                 }
             }
         }
-    }
-}
-
-impl Default for SoundManager {
-    fn default() -> Self {
-        let volume_manager = VolumeManager::new();
-        let mut manager = Self::new(volume_manager).expect("Failed to create SoundManager");
-        manager.start_loading_background();
-        manager
     }
 }
