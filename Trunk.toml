@@ -1,6 +1,8 @@
 [build]
 # Output directory for built artifacts
 dist = "dist"
+# Base URL for GitHub Pages (repository name)
+public_url = "/retris/"
 # Enable debug symbols for better error messages
 release = false
 
