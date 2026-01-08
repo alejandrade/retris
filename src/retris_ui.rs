@@ -15,24 +15,6 @@ pub struct ButtonPosition {
 }
 
 impl ButtonPosition {
-    /// Create position for loading screen (below center)
-    pub fn for_loading() -> Self {
-        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
-        let size = 80.0;
-        let world_x = -size / 2.0;
-        let world_y = 120.0;
-        let world_pos = vec2(world_x, world_y);
-        let screen_pos = coords.world_to_screen(world_pos);
-        
-        Self {
-            world_x,
-            world_y,
-            screen_x: screen_pos.x,
-            screen_y: screen_pos.y,
-            size,
-        }
-    }
-    
     /// Create position for bottom-right corner
     pub fn for_bottom_right() -> Self {
         let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
@@ -82,16 +64,6 @@ pub struct MuteButton {
 }
 
 impl MuteButton {
-    /// Create button for loading screen
-    pub fn for_loading() -> Self {
-        Self {
-            pos: ButtonPosition::for_loading(),
-            is_muted: false,
-            speaker_on_texture: None,
-            speaker_off_texture: None,
-        }
-    }
-    
     /// Create button for bottom-right corner
     pub fn for_bottom_right() -> Self {
         Self {
@@ -138,11 +110,6 @@ impl MuteButton {
     /// Toggle mute state
     pub fn toggle(&mut self) {
         self.is_muted = !self.is_muted;
-    }
-    
-    /// Set mute state
-    pub fn set_muted(&mut self, muted: bool) {
-        self.is_muted = muted;
     }
     
     /// Get mute state

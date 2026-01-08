@@ -12,8 +12,6 @@ pub const COLOR_BORDER_GREEN: Color = Color::new([0.2, 0.95, 0.4, 0.8]); // Grid
 pub const COLOR_TEXT_GREEN: Color = Color::new([0.15, 0.8, 0.35, 1.0]); // UI text
 pub const COLOR_CELL_BORDER: Color = Color::new([0.0, 0.0, 0.0, 1.0]); // Black cell borders
 pub const COLOR_DARK_GRAY: Color = Color::new([0.4, 0.4, 0.4, 1.0]); // Dark gray for subtle text
-pub const COLOR_RED: Color = Color::new([0.9, 0.1, 0.1, 1.0]); // Red for mute button
-pub const COLOR_WHITE: Color = Color::new([1.0, 1.0, 1.0, 1.0]); // White
 
 // Background
 pub const COLOR_BACKGROUND: Color = Color::new([0.05, 0.05, 0.08, 1.0]); // Dark blue-gray

@@ -11,10 +11,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum LoadingState {
-    NotStarted,
-    Loading { current: usize, total: usize },
     Complete,
-    Failed(String),
 }
 
 pub struct MusicManager {
@@ -36,8 +33,6 @@ pub struct MusicManager {
     game_over_handle: Option<StaticSoundHandle>,
     // New flag to control if the playlist is allowed to advance
     playlist_active: bool,
-    // Track if audio context has been resumed (needed for WASM/browser autoplay policy)
-    audio_context_resumed: bool,
 }
 
 impl MusicManager {
@@ -117,7 +112,6 @@ impl MusicManager {
             game_over_decoded: None,
             game_over_handle: None,
             playlist_active: false,
-            audio_context_resumed: false,
         })
     }
 
@@ -138,10 +132,6 @@ impl MusicManager {
         }
     }
 
-    pub fn is_muted(&self) -> bool {
-        self.muted
-    }
-
     pub fn update_volume(&mut self) {
         let volume = self.volume_manager.music_volume();
         let db = Self::amplitude_to_db(volume);
@@ -152,19 +142,6 @@ impl MusicManager {
                 ..Default::default()
             },
         );
-    }
-
-    /// Resume audio context (required for WASM/browser autoplay policy)
-    /// Should be called on first user interaction. According to Chrome docs, the AudioContext
-    /// will be resumed after a user gesture if start() is called on any attached node.
-    /// Playing a sound will trigger the resume automatically.
-    pub fn ensure_audio_context_resumed(&mut self) {
-        if !self.audio_context_resumed {
-            // Mark as resumed - actual resume will happen when we try to play
-            // The AudioContext was warmed up during startup, so it should resume
-            // when we call play() after a user gesture
-            self.audio_context_resumed = true;
-        }
     }
 
     // --- Loading Logic ---
@@ -353,67 +330,13 @@ impl MusicManager {
         self.play_current_song(true);
     }
 
-    pub fn skip_to_next(&mut self) {
-        // Only allow skipping if we are in "Playlist Mode"
-        if self.playlist_active {
-            self.play_next_song();
-        }
-    }
-
     // --- Data Helpers ---
-
-    /// Get all song data as (filename, bytes) tuples
-    fn get_song_data() -> Vec<(&'static str, &'static [u8])> {
-        vec![
-            (
-                "01. Slay The Evil.ogg",
-                include_bytes!("../assets/01. Slay The Evil.ogg"),
-            ),
-            (
-                "02. Perilous Dungeon.ogg",
-                include_bytes!("../assets/02. Perilous Dungeon.ogg"),
-            ),
-            (
-                "03. Boss Battle.ogg",
-                include_bytes!("../assets/03. Boss Battle.ogg"),
-            ),
-            (
-                "04. Mechanical Complex.ogg",
-                include_bytes!("../assets/04. Mechanical Complex.ogg"),
-            ),
-            (
-                "05. Last Mission.ogg",
-                include_bytes!("../assets/05. Last Mission.ogg"),
-            ),
-            (
-                "06. Unknown Planet.ogg",
-                include_bytes!("../assets/06. Unknown Planet.ogg"),
-            ),
-            (
-                "07. MonsterVania #1.ogg",
-                include_bytes!("../assets/07. MonsterVania #1.ogg"),
-            ),
-            (
-                "08. Space Adventure.ogg",
-                include_bytes!("../assets/08. Space Adventure.ogg"),
-            ),
-            ("09. Crisis.ogg", include_bytes!("../assets/09. Crisis.ogg")),
-            (
-                "10. Jester Theme.ogg",
-                include_bytes!("../assets/10. Jester Theme.ogg"),
-            ),
-        ]
-    }
 
     fn extract_song_name(song_file: &str) -> String {
         song_file
             .trim_start_matches(|c: char| c.is_numeric() || c == '.' || c == ' ')
             .trim_end_matches(".ogg")
             .to_string()
-    }
-
-    pub fn loading_state(&self) -> LoadingState {
-        self.loading_state.lock().unwrap().clone()
     }
 
     pub fn is_loaded(&self) -> bool {
@@ -424,21 +347,6 @@ impl MusicManager {
     pub fn stop(&mut self) {
         self.stop_current_song();
         self.stop_game_over_song();
-    }
-
-    pub fn current_song_name(&self) -> String {
-        if self.song_names.is_empty() || self.current_index >= self.song_names.len() {
-            return "No Music".to_string();
-        }
-        self.song_names[self.current_index].clone()
-    }
-
-    pub fn song_count(&self) -> usize {
-        self.song_bytes.len()
-    }
-
-    pub fn current_song_number(&self) -> usize {
-        self.current_index + 1
     }
 
     // Test sound methods kept but ensured they affect state correctly

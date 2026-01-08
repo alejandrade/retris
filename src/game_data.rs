@@ -234,20 +234,6 @@ impl ScoreManager {
         }
     }
 
-    /// Create a new ScoreManager with custom settings
-    pub fn with_settings(base_points_per_row: u64, lines_per_level: u32) -> Self {
-        Self {
-            score: 0,
-            lines_cleared: 0,
-            level: 0,
-            current_multiplier: 1,
-            combo_count: 0,
-            high_score: 0,
-            high_score_needs_sync: false,
-            base_points_per_row,
-            lines_per_level,
-        }
-    }
 
     /// Get the current score
     pub fn score(&self) -> u64 {
@@ -277,45 +263,6 @@ impl ScoreManager {
     /// Get the high score
     pub fn high_score(&self) -> u64 {
         self.high_score
-    }
-
-    /// Check if the current score is a new high score
-    pub fn is_new_high_score(&self) -> bool {
-        self.score > self.high_score
-    }
-
-    /// Check if high score needs to be synced to server
-    pub fn needs_sync(&self) -> bool {
-        self.high_score_needs_sync
-    }
-
-    /// Get the drop speed in frames per grid cell for the current level
-    /// Based on NES Tetris drop speed curve
-    /// At 60 FPS: Level 0 = 0.8s per cell, Level 29+ = 1/60s per cell
-    pub fn frames_per_cell(&self) -> u32 {
-        match self.level {
-            0 => 48,
-            1 => 43,
-            2 => 38,
-            3 => 33,
-            4 => 28,
-            5 => 23,
-            6 => 18,
-            7 => 13,
-            8 => 8,
-            9 => 6,
-            10..=12 => 5,
-            13..=15 => 4,
-            16..=18 => 3,
-            19..=28 => 2,
-            _ => 1,  // Level 29+ is max speed
-        }
-    }
-
-    /// Get drop speed as seconds per cell (for use with delta time)
-    /// Assumes 60 FPS for frame calculations
-    pub fn seconds_per_cell(&self) -> f32 {
-        self.frames_per_cell() as f32 / 60.0
     }
 
     /// Call this when rows are cleared
@@ -416,11 +363,6 @@ impl ScoreManager {
         self.combo_count = 0;
     }
 
-    /// Check if a level up occurred (call this after on_rows_cleared)
-    pub fn level_changed_from(&self, old_level: u32) -> bool {
-        self.level != old_level
-    }
-
     /// Save the current high score to storage
     /// This is called automatically when a new high score is achieved
     fn save_high_score(&self) {
@@ -431,93 +373,12 @@ impl ScoreManager {
         println!("💾 Saved new high score: {}", self.high_score);
     }
 
-    /// Reset the score, level, and multiplier (for new game)
-    /// Updates high score if current score beats it and saves to storage
-    pub fn reset(&mut self) {
-        // Update high score if current game beat it
-        if self.score > self.high_score {
-            self.high_score = self.score;
-            self.high_score_needs_sync = true;
-            self.save_high_score();
-        }
-
-        self.score = 0;
-        self.lines_cleared = 0;
-        self.level = 0;
-        self.current_multiplier = 1;
-        self.combo_count = 0;
-    }
-
     /// Manually set the high score (useful when loading from server)
     pub fn set_high_score(&mut self, high_score: u64) {
         self.high_score = high_score;
         self.high_score_needs_sync = false;
     }
 
-    // ========== SERVER API STUBS ==========
-    // TODO: Implement these with your actual server API
-
-    /// Load high score from server
-    /// Returns the high score, or None if loading failed
-    pub async fn load_high_score_from_server(&mut self) -> Option<u64> {
-        // TODO: Implement server API call
-        // Example:
-        // let response = api_client.get("/api/highscore").await?;
-        // let high_score = response.json().await?;
-        // self.set_high_score(high_score);
-        // Some(high_score)
-
-        // For now, just return None (no server connection)
-        None
-    }
-
-    /// Save high score to server
-    /// Returns true if save was successful
-    pub async fn save_high_score_to_server(&mut self) -> bool {
-        if !self.high_score_needs_sync {
-            return true; // Nothing to sync
-        }
-
-        // TODO: Implement server API call
-        // Example:
-        // let response = api_client
-        //     .post("/api/highscore")
-        //     .json(&self.high_score)
-        //     .await;
-        //
-        // if response.is_ok() {
-        //     self.high_score_needs_sync = false;
-        //     return true;
-        // }
-        // false
-
-        // For now, just mark as synced (pretend it worked)
-        self.high_score_needs_sync = false;
-        true
-    }
-
-    /// Sync high score with server (load and update if server has higher score)
-    /// Returns true if sync was successful
-    pub async fn sync_with_server(&mut self) -> bool {
-        // TODO: Implement full sync logic
-        // 1. Load high score from server
-        // 2. If server score is higher, update local
-        // 3. If local score is higher, upload to server
-
-        // Example:
-        // if let Some(server_high_score) = self.load_high_score_from_server().await {
-        //     if server_high_score > self.high_score {
-        //         self.high_score = server_high_score;
-        //     } else if self.high_score > server_high_score {
-        //         return self.save_high_score_to_server().await;
-        //     }
-        //     return true;
-        // }
-        // false
-
-        // For now, just return false (no server connection)
-        false
-    }
 }
 
 impl Default for ScoreManager {

@@ -39,47 +39,11 @@ impl CoordinateSystem {
         )
     }
 
-    /// Convert screen coordinates to world coordinates
-    pub fn screen_to_world(&self, screen_pos: Vec2) -> Vec2 {
-        vec2(
-            screen_pos.x - self.screen_width / 2.0 - self.top_left_offset.x,
-            screen_pos.y - self.screen_height / 2.0 - self.top_left_offset.y,
-        )
-    }
-
-    /// Convert world X to screen X
-    pub fn world_x_to_screen_x(&self, world_x: f32) -> f32 {
-        world_x + self.screen_width / 2.0 + self.top_left_offset.x
-    }
-
-    /// Convert world Y to screen Y
-    pub fn world_y_to_screen_y(&self, world_y: f32) -> f32 {
-        world_y + self.screen_height / 2.0 + self.top_left_offset.y
-    }
-
-    /// Convert screen X to world X
-    pub fn screen_x_to_world_x(&self, screen_x: f32) -> f32 {
-        screen_x - self.screen_width / 2.0 - self.top_left_offset.x
-    }
-
-    /// Convert screen Y to world Y
-    pub fn screen_y_to_world_y(&self, screen_y: f32) -> f32 {
-        screen_y - self.screen_height / 2.0 - self.top_left_offset.y
-    }
-
     /// Get the world position of the top-left corner of the screen
     pub fn top_left_world(&self) -> Vec2 {
         vec2(
             -self.screen_width / 2.0 - self.top_left_offset.x,
             -self.screen_height / 2.0 - self.top_left_offset.y,
-        )
-    }
-
-    /// Get the world position of the bottom-right corner of the screen
-    pub fn bottom_right_world(&self) -> Vec2 {
-        vec2(
-            self.screen_width / 2.0 - self.top_left_offset.x,
-            self.screen_height / 2.0 - self.top_left_offset.y,
         )
     }
 

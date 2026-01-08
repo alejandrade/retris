@@ -37,9 +37,6 @@ static GAME_DATA_CACHE: Mutex<Option<GameData>> = Mutex::new(None);
 pub struct Storage;
 
 impl Storage {
-    const VOLUME_KEY: &'static str = "retris_volume_settings";
-    const GAME_DATA_KEY: &'static str = "retris_game_data";
-    
     /// Load volume settings from storage (localStorage on web, file on native)
     /// Results are cached after first load for performance
     pub fn load_volume() -> VolumeSettings {
@@ -69,19 +66,6 @@ impl Storage {
         }
         
         settings
-    }
-    
-    /// Check if volume settings exist in storage (returns true if settings were previously saved)
-    pub fn has_volume_settings() -> bool {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Self::load_volume_web().is_some()
-        }
-        
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            Self::load_volume_native().is_some()
-        }
     }
     
     /// Save volume settings to storage
@@ -153,21 +137,12 @@ impl Storage {
         }
     }
     
-    /// Clear the volume settings cache (forces next load to read from storage)
-    pub fn clear_volume_cache() {
-        if let Ok(mut cache) = VOLUME_CACHE.lock() {
-            *cache = None;
-        }
-    }
-    
-    /// Clear the game data cache (forces next load to read from storage)
-    pub fn clear_game_data_cache() {
-        if let Ok(mut cache) = GAME_DATA_CACHE.lock() {
-            *cache = None;
-        }
-    }
-    
     // ===== Web implementation (localStorage) =====
+    
+    #[cfg(target_arch = "wasm32")]
+    const VOLUME_KEY: &'static str = "retris_volume_settings";
+    #[cfg(target_arch = "wasm32")]
+    const GAME_DATA_KEY: &'static str = "retris_game_data";
     
     #[cfg(target_arch = "wasm32")]
     fn load_volume_web() -> Option<VolumeSettings> {

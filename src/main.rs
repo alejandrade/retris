@@ -5,7 +5,6 @@ mod game_data;
 mod game_over_screen;
 mod game_ui;
 mod grid;
-mod loading_screen;
 mod music_manager;
 mod retris_colors;
 mod retris_ui;
@@ -21,7 +20,6 @@ use egor::app::*;
 use egor::input::KeyCode;
 use game::Game;
 use game_over_screen::{GameOverAction, GameOverScreen};
-use loading_screen::LoadingScreen;
 use music_manager::MusicManager;
 use retris_ui::MuteButton;
 use sound_manager::SoundManager;
@@ -34,7 +32,6 @@ pub const SCREEN_HEIGHT: u32 = 1048;
 
 #[derive(Clone, Copy, PartialEq)]
 enum GameState {
-    Loading,
     Title,
     Playing,
     VolumeControl,
@@ -46,14 +43,13 @@ fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
-    let mut state = GameState::VolumeControl;
+    let mut state = GameState::Title;
     let mut title_screen = TitleScreen::new();
     let mut game: Option<Game> = None;
     let mut background = Background::new(100);
     let mut was_focused = true;
     let mut unfocused_timer: Option<f32> = None;
     let mut muted_due_to_unfocused = false; // Track if we muted due to unfocused timeout
-    let mut audio_context_resumed = false; // Track if audio context has been resumed (required for WASM)
     const UNFOCUSED_MUTE_DELAY: f32 = 15.0; // seconds
 
     // Create shared volume manager
@@ -100,27 +96,6 @@ fn main() {
             background.draw(gfx);
 
             match state {
-                GameState::Loading => {
-                    // Update loading screen
-                    // loading_screen.update(
-                    //     timer.delta,
-                    //     input,
-                    //     &mut music_manager,
-                    //     &mut sound_manager,
-                    //     &volume_manager,
-                    // );
-                    //
-                    // // Draw loading screen
-                    // let loading_state = music_manager.loading_state();
-                    // loading_screen.draw(gfx, &loading_state);
-                    //
-                    // // Check if user clicked OK to continue
-                    // if loading_screen.is_ready_to_continue(input) {
-                    //     // Start music (will check muted internally)
-                    //     music_manager.start();
-                    //     state = GameState::Title;
-                    // }
-                }
                 GameState::Title => {
                     // Update music (check for song transitions)
                     music_manager.update();

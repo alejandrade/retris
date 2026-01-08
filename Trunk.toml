@@ -1,0 +1,10 @@
+[build]
+# Enable debug symbols for better error messages
+release = false
+
+# Enable source maps for debugging
+[build.wasm]
+# Keep debug symbols in the WASM file
+debug = true
+# If you want to stop Trunk from messing with your scripts
+inject_scripts = false

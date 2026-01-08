@@ -26,12 +26,6 @@ impl VolumeManager {
         }
     }
     
-    /// Check if the current settings are the default (not yet customized)
-    pub fn is_default(&self) -> bool {
-        let settings = self.inner.lock().unwrap();
-        settings.music_volume == 0.5 && settings.sfx_volume == 0.5
-    }
-    
     /// Get the current music volume (0.0 to 1.0)
     pub fn music_volume(&self) -> f32 {
         self.inner.lock().unwrap().music_volume
