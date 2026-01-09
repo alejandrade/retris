@@ -63,6 +63,7 @@ fn main() {
     // Create music manager and start loading in background
     let mut music_manager =
         MusicManager::new(volume_manager.clone()).expect("Failed to create music manager");
+    music_manager.play_game_over_song();
     // Create small mute button for bottom right
     let mut mute_button_small = MuteButton::for_bottom_right();
 
