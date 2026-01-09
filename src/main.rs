@@ -64,7 +64,6 @@ fn create_audio_managers(
 trait SoundManagerOption {
     fn play_bounce(&mut self);
     fn play_shuffle(&mut self);
-    fn play_success(&mut self);
     fn set_muted(&mut self, muted: bool);
     fn update_game(&mut self, input: &egor::input::Input, delta: f32, game: &mut Game);
 }
@@ -79,12 +78,6 @@ impl SoundManagerOption for Option<SoundManager> {
     fn play_shuffle(&mut self) {
         if let Some(mgr) = self.as_mut() {
             mgr.play_shuffle();
-        }
-    }
-    
-    fn play_success(&mut self) {
-        if let Some(mgr) = self.as_mut() {
-            mgr.play_success();
         }
     }
     
