@@ -4,6 +4,52 @@ use egor::input::{Input, MouseButton};
 use egor::math::vec2;
 use egor::render::Graphics;
 
+/// Convert window coordinates to buffer coordinates
+/// Handles DPR, canvas offset, and CSS-to-buffer scaling
+#[cfg(target_arch = "wasm32")]
+fn window_to_buffer_coords(window_x: f32, window_y: f32, buffer_width: f32, buffer_height: f32) -> (f32, f32) {
+    use wasm_bindgen::JsCast;
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+    let canvas = document.query_selector("canvas").unwrap().unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+
+    // Get DPR - input coordinates are in physical pixels, need to convert to CSS pixels
+    let dpr = crate::get_device_pixel_ratio();
+    let css_x = window_x / dpr;
+    let css_y = window_y / dpr;
+
+    let rect = canvas.get_bounding_client_rect();
+    let canvas_x = rect.left() as f32;
+    let canvas_y = rect.top() as f32;
+    let css_width = rect.width() as f32;
+    let css_height = rect.height() as f32;
+
+    let canvas_relative_x = css_x - canvas_x;
+    let canvas_relative_y = css_y - canvas_y;
+
+    let scale_x = buffer_width / css_width;
+    let scale_y = buffer_height / css_height;
+
+    (canvas_relative_x * scale_x, canvas_relative_y * scale_y)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn window_to_buffer_coords(window_x: f32, window_y: f32, _buffer_width: f32, _buffer_height: f32) -> (f32, f32) {
+    (window_x, window_y)
+}
+
+/// Public version for debug module
+#[cfg(target_arch = "wasm32")]
+pub fn window_to_buffer_coords_detailed(window_x: f32, window_y: f32, buffer_width: f32, buffer_height: f32) -> (f32, f32) {
+    window_to_buffer_coords(window_x, window_y, buffer_width, buffer_height)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn window_to_buffer_coords_detailed(window_x: f32, window_y: f32, _buffer_width: f32, _buffer_height: f32) -> (f32, f32) {
+    (window_x, window_y)
+}
+
 /// Button position in both coordinate systems
 pub struct ButtonPosition {
     pub world_x: f32,    // For drawing (0,0 = center)
@@ -133,7 +179,15 @@ impl MuteButton {
         #[cfg(target_arch = "wasm32")]
         {
             use crate::get_device_pixel_ratio;
+            let old_dpr = self.device_pixel_ratio;
             self.device_pixel_ratio = get_device_pixel_ratio();
+            if (old_dpr - self.device_pixel_ratio).abs() > 0.01 {
+                let screen = gfx.screen_size();
+                crate::log!(
+                    "Button DPR changed: {:.2} -> {:.2}, Screen: {:.0}x{:.0}",
+                    old_dpr, self.device_pixel_ratio, screen.x, screen.y
+                );
+            }
         }
 
         let screen = gfx.screen_size();
@@ -142,7 +196,7 @@ impl MuteButton {
         let scale = ButtonPosition::scale_factor(screen_height);
         let size = ButtonPosition::BASE_SIZE * scale;
         let padding = ButtonPosition::BASE_PADDING * scale;
-        
+
         // Recalculate world position based on which corner (using actual screen width)
         if self.is_bottom_right {
             // Position relative to actual screen width, not playing field width
@@ -157,23 +211,54 @@ impl MuteButton {
         self.pos.size = size;
         // Update screen position based on new world position
         self.pos.update_screen_pos(screen_width, screen_height);
+
+        // Debug log first update
+        static mut LOGGED: bool = false;
+        unsafe {
+            if !LOGGED {
+                LOGGED = true;
+                crate::log!(
+                    "📍 BTN POS: world=({:.0},{:.0}) screen=({:.0},{:.0}) size={:.0} corner={}",
+                    self.pos.world_x, self.pos.world_y,
+                    self.pos.screen_x, self.pos.screen_y,
+                    self.pos.size,
+                    if self.is_bottom_right { "BR" } else { "BL" }
+                );
+            }
+        }
     }
     
     /// Check if button was clicked
-    pub fn is_clicked(&self, input: &Input) -> bool {
+    pub fn is_clicked(&self, input: &Input, #[allow(unused_variables)] gfx: &egor::render::Graphics) -> bool {
         if !input.mouse_pressed(egor::input::MouseButton::Left) {
             return false;
         }
-        
+
         let (mx, my) = input.mouse_position();
-        
-        // Apply device pixel ratio to input coordinates for consistent comparison
-        let adjusted_x = mx / self.device_pixel_ratio;
-        let adjusted_y = my / self.device_pixel_ratio;
-        
-        // Use screen coordinates for mouse comparison
-        adjusted_x >= self.pos.screen_x && adjusted_x <= self.pos.screen_x + self.pos.size && 
-        adjusted_y >= self.pos.screen_y && adjusted_y <= self.pos.screen_y + self.pos.size
+        let screen = gfx.screen_size();
+        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen.x, screen.y);
+
+        // Convert buffer coords to world coords for comparison
+        let coords = CoordinateSystem::with_default_offset(screen.x, screen.y);
+        let click_world = coords.screen_to_world(vec2(buffer_x, buffer_y));
+
+        // Button is drawn at (world_x, world_y) with size, so check if click is in that box
+        let hit = click_world.x >= self.pos.world_x &&
+                  click_world.x <= self.pos.world_x + self.pos.size &&
+                  click_world.y >= self.pos.world_y &&
+                  click_world.y <= self.pos.world_y + self.pos.size;
+
+        // Debug log button clicks
+        crate::log!(
+            "🎯 BTN: buffer=({:.0},{:.0}) world=({:.0},{:.0}) btn_world=({:.0},{:.0}) size={:.0} hit={}",
+            buffer_x, buffer_y,
+            click_world.x, click_world.y,
+            self.pos.world_x, self.pos.world_y,
+            self.pos.size,
+            hit
+        );
+
+        hit
     }
     
     /// Toggle mute state
@@ -276,46 +361,41 @@ impl VolumeSlider {
     /// Note: update() should be called first to ensure position is current
     pub fn handle_input(&mut self, input: &Input, screen_width: f32, screen_height: f32) -> bool {
         let (mx, my) = input.mouse_position();
-        
-        // Apply device pixel ratio to input coordinates for consistent comparison
-        let adjusted_x = mx / self.device_pixel_ratio;
-        let adjusted_y = my / self.device_pixel_ratio;
-        
+        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen_width, screen_height);
+
         let mouse_pressed = input.mouse_pressed(MouseButton::Left);
         let mouse_released = input.mouse_released(MouseButton::Left);
-        
+
         // Reset just_released flag from previous frame
         self.just_released = false;
-        
-        // Convert to screen coords for hit testing using actual screen dimensions
+
+        // Convert buffer coords to world coords for hit testing
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        let screen_pos = coords.world_to_screen(vec2(self.x, self.y));
-        let screen_x = screen_pos.x;
-        let screen_y = screen_pos.y;
-        
-        // Check if mouse is over slider
-        let in_bounds = adjusted_x >= screen_x && adjusted_x <= screen_x + self.width &&
-                       adjusted_y >= screen_y && adjusted_y <= screen_y + self.height;
-        
+        let click_world = coords.screen_to_world(vec2(buffer_x, buffer_y));
+
+        // Check if mouse is over slider (in world coordinates)
+        let in_bounds = click_world.x >= self.x && click_world.x <= self.x + self.width &&
+                       click_world.y >= self.y && click_world.y <= self.y + self.height;
+
         // Start dragging when clicked on slider
         if in_bounds && mouse_pressed {
             self.dragging = true;
         }
-        
+
         // Stop dragging when mouse button is released
         if mouse_released && self.dragging {
             self.dragging = false;
             self.just_released = true; // Mark that we just released
         }
-        
+
         // Update value while dragging
         if self.dragging {
-            let relative_x = (adjusted_x - screen_x).clamp(0.0, self.width);
+            let relative_x = (click_world.x - self.x).clamp(0.0, self.width);
             let old_value = self.value;
             self.value = relative_x / self.width;
             return (old_value - self.value).abs() > 0.01; // Value changed significantly
         }
-        
+
         false
     }
     
@@ -441,21 +521,32 @@ impl Button {
         if !input.mouse_pressed(MouseButton::Left) {
             return false;
         }
-        
+
         let (mx, my) = input.mouse_position();
-        
-        // Apply device pixel ratio to input coordinates for consistent comparison
-        let adjusted_x = mx / self.device_pixel_ratio;
-        let adjusted_y = my / self.device_pixel_ratio;
-        
-        // Use coordinate system with actual screen dimensions for hit testing
+        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen_width, screen_height);
+
+        // Convert buffer coords to world coords for comparison
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        let screen_pos = coords.world_to_screen(vec2(self.x, self.y));
-        let screen_x = screen_pos.x;
-        let screen_y = screen_pos.y;
-        
-        adjusted_x >= screen_x && adjusted_x <= screen_x + self.width &&
-        adjusted_y >= screen_y && adjusted_y <= screen_y + self.height
+        let click_world = coords.screen_to_world(vec2(buffer_x, buffer_y));
+
+        // Button is drawn at (x, y) with size, check if click is in that box
+        let hit = click_world.x >= self.x &&
+                  click_world.x <= self.x + self.width &&
+                  click_world.y >= self.y &&
+                  click_world.y <= self.y + self.height;
+
+        // Debug log
+        crate::log!(
+            "🎯 BUTTON: buffer=({:.0},{:.0}) world=({:.0},{:.0}) btn=({:.0},{:.0}) size=({:.0}×{:.0}) label='{}' hit={}",
+            buffer_x, buffer_y,
+            click_world.x, click_world.y,
+            self.x, self.y,
+            self.width, self.height,
+            self.label,
+            hit
+        );
+
+        hit
     }
     
     /// Draw the button (position should be updated via update() before calling)

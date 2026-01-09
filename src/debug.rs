@@ -24,7 +24,7 @@ impl DebugOverlay {
         }
     }
 
-    pub fn update(&mut self, input: &Input, delta: f32, _screen_width: f32, _screen_height: f32) {
+    pub fn update(&mut self, input: &Input, delta: f32, screen_width: f32, screen_height: f32) {
         // Update device pixel ratio
         #[cfg(target_arch = "wasm32")]
         {
@@ -32,6 +32,7 @@ impl DebugOverlay {
         }
 
         // Check for mouse or touch input
+        let is_pressed = input.mouse_pressed(MouseButton::Left);
         let is_held = input.mouse_held(MouseButton::Left) || input.touch_count() > 0;
         let (input_x, input_y) = if input.touch_count() > 0 {
             input.primary_touch_position()
@@ -39,9 +40,46 @@ impl DebugOverlay {
             input.mouse_position()
         };
 
-        // Apply DPI adjustment
-        let adjusted_x = input_x / self.device_pixel_ratio;
-        let adjusted_y = input_y / self.device_pixel_ratio;
+        // Calculate adjusted coordinates with detailed logging
+        #[cfg(target_arch = "wasm32")]
+        let (adjusted_x, adjusted_y) = {
+            use wasm_bindgen::JsCast;
+
+            let (buffer_x, buffer_y) = crate::retris_ui::window_to_buffer_coords_detailed(
+                input_x, input_y, screen_width, screen_height
+            );
+
+            // Log comprehensive debug info on click
+            if is_pressed {
+                let window = web_sys::window().unwrap();
+                let document = window.document().unwrap();
+                let canvas = document.query_selector("canvas").unwrap().unwrap();
+                let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+                let rect = canvas.get_bounding_client_rect();
+                let dpr = crate::get_device_pixel_ratio();
+                let css_x = input_x / dpr;
+                let css_y = input_y / dpr;
+                let canvas_rel_x = css_x - rect.left() as f32;
+                let canvas_rel_y = css_y - rect.top() as f32;
+
+                crate::log!(
+                    "🔍 CLICK DEBUG:\n  Physical px: ({:.0}, {:.0})\n  DPR: {:.2}x\n  CSS px: ({:.0}, {:.0})\n  Canvas offset: ({:.0}, {:.0})\n  Canvas-relative: ({:.0}, {:.0})\n  Canvas CSS size: {:.0}×{:.0}\n  Buffer size: {:.0}×{:.0}\n  Final buffer coords: ({:.0}, {:.0})",
+                    input_x, input_y,
+                    dpr,
+                    css_x, css_y,
+                    rect.left(), rect.top(),
+                    canvas_rel_x, canvas_rel_y,
+                    rect.width(), rect.height(),
+                    canvas.width(), canvas.height(),
+                    buffer_x, buffer_y
+                );
+            }
+
+            (buffer_x, buffer_y)
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (adjusted_x, adjusted_y) = (input_x, input_y);
 
         if is_held {
             // Check if this is a new press (timer is None)

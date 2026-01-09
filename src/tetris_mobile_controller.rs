@@ -172,28 +172,34 @@ impl TetrisMobileController {
         piece_world_pos: Option<Vec2>,
         piece_cell_size: Option<f32>,
     ) {
-        // Apply device pixel ratio to input coordinates for consistent comparison
-        let adjusted_x = x / self.device_pixel_ratio;
-        let adjusted_y = y / self.device_pixel_ratio;
+        // Convert window coordinates to buffer coordinates using the shared helper
+        let (buffer_x, buffer_y) = crate::retris_ui::window_to_buffer_coords_detailed(
+            x, y, self.screen_width, self.screen_height
+        );
 
         // Convert to world coordinates for comparison
-        let touch_world = coords.screen_to_world(vec2(adjusted_x, adjusted_y));
+        let touch_world = coords.screen_to_world(vec2(buffer_x, buffer_y));
 
-        let quit_screen = coords.world_to_screen(self.quit_button_world_pos);
-        let quit_button_size = self.quit_button_size;
-        let red_button_screen = coords.world_to_screen(self.red_button_world_pos);
-        let red_button_size = self.red_button_size;
-
-        // Check quit button first (has priority)
-        if self.is_point_in_square(adjusted_x, adjusted_y, quit_screen, quit_button_size) {
+        // Check quit button first (has priority) - use world coordinates
+        let quit_half = self.quit_button_size / 2.0;
+        if touch_world.x >= self.quit_button_world_pos.x - quit_half
+            && touch_world.x <= self.quit_button_world_pos.x + quit_half
+            && touch_world.y >= self.quit_button_world_pos.y - quit_half
+            && touch_world.y <= self.quit_button_world_pos.y + quit_half
+        {
             if just_pressed {
                 self.quit_pressed = true;
             }
             return;
         }
 
-        // Check red button (fast drop)
-        if self.is_point_in_square(adjusted_x, adjusted_y, red_button_screen, red_button_size) {
+        // Check red button (fast drop) - use world coordinates
+        let red_half = self.red_button_size / 2.0;
+        if touch_world.x >= self.red_button_world_pos.x - red_half
+            && touch_world.x <= self.red_button_world_pos.x + red_half
+            && touch_world.y >= self.red_button_world_pos.y - red_half
+            && touch_world.y <= self.red_button_world_pos.y + red_half
+        {
             // Red button: fast drop (held)
             if held {
                 self.red_button_pressed = true;
@@ -201,14 +207,16 @@ impl TetrisMobileController {
             return;
         }
 
-        // Check if click is on the piece itself (for rotation)
+        // Check if click is on the piece itself (for rotation) - use world coordinates
         if just_pressed {
             if let (Some(piece_pos), Some(cell_size)) = (piece_world_pos, piece_cell_size) {
                 // Approximate piece bounds: pieces are typically 2-4 cells wide/tall
                 // Use a generous hitbox (4 cells) to make it easier to tap
-                let piece_hitbox_size = cell_size * 4.0;
-                let piece_screen = coords.world_to_screen(piece_pos);
-                if self.is_point_in_square(adjusted_x, adjusted_y, piece_screen, piece_hitbox_size)
+                let piece_half = cell_size * 2.0;
+                if touch_world.x >= piece_pos.x - piece_half
+                    && touch_world.x <= piece_pos.x + piece_half
+                    && touch_world.y >= piece_pos.y - piece_half
+                    && touch_world.y <= piece_pos.y + piece_half
                 {
                     self.rotate_pressed = true;
                     return;
@@ -230,9 +238,8 @@ impl TetrisMobileController {
                 }
             }
         } else {
-            // No piece - use screen center as fallback
-            let screen_center_x = self.screen_width / 2.0;
-            if adjusted_x < screen_center_x {
+            // No piece - use world center (x=0) as fallback
+            if touch_world.x < 0.0 {
                 if held {
                     self.left_held = true;
                 }

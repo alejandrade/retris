@@ -6,6 +6,7 @@ mod game_data;
 mod game_over_screen;
 mod game_ui;
 mod grid;
+mod logger;
 mod music_manager;
 mod retris_colors;
 mod retris_ui;
@@ -34,6 +35,10 @@ use volume_manager::VolumeManager;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 // Screen size is now dynamic and obtained from gfx.screen_size() at runtime
+
+/// Enable debug overlay (DPI display, click squares, etc.)
+/// Set to false for production builds
+const DEBUG_ENABLED: bool = false;
 
 // Boolean flag that JavaScript can set to request music start
 #[cfg(target_arch = "wasm32")]
@@ -69,6 +74,13 @@ pub fn get_device_pixel_ratio() -> f32 {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_device_pixel_ratio() -> f32 {
     1.0 // Default for non-WASM builds
+}
+
+/// JavaScript-callable function to get debug mode status
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn is_debug_enabled() -> bool {
+    DEBUG_ENABLED
 }
 
 /// Helper function to create audio managers
@@ -236,6 +248,7 @@ fn main() {
 
     App::new()
         .title("Retris")
+        .screen_size(568, 1136)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
@@ -293,9 +306,11 @@ fn main() {
             background.update_screen_size(screen.x, screen.y);
             background.update(timer.delta);
             background.draw(gfx);
-            
-            // Update debug overlay
-            debug_overlay.update(input, timer.delta, screen.x, screen.y);
+
+            // Update debug overlay (only if debug enabled)
+            if DEBUG_ENABLED {
+                debug_overlay.update(input, timer.delta, screen.x, screen.y);
+            }
 
             match state {
                 GameState::Title => {
@@ -320,7 +335,7 @@ fn main() {
                     volume_button.update(gfx);
                     volume_button.draw(gfx);
 
-                    if volume_button.is_clicked(input) {
+                    if volume_button.is_clicked(input, gfx) {
                         previous_state = GameState::Title;
                         state = GameState::VolumeControl;
                     }
@@ -367,7 +382,7 @@ fn main() {
                     volume_button.draw(gfx);
 
                     // Handle volume button click
-                    if volume_button.is_clicked(input) {
+                    if volume_button.is_clicked(input, gfx) {
                         previous_state = GameState::Playing;
                         state = GameState::VolumeControl;
                     }
@@ -432,7 +447,7 @@ fn main() {
                     let screen = gfx.screen_size();
                     volume_control_screen.draw(gfx, screen.x, screen.y);
                     mute_button_small.update(gfx);
-                    if mute_button_small.is_clicked(input) {
+                    if mute_button_small.is_clicked(input, gfx) {
                         mute_button_small.toggle();
                         let is_muted = mute_button_small.is_muted();
                         music_manager.set_muted(is_muted);
@@ -492,8 +507,10 @@ fn main() {
                 }
             }
             
-            // Draw debug overlay (on top of everything)
-            let screen = gfx.screen_size();
-            debug_overlay.draw(gfx, screen.x, screen.y);
+            // Draw debug overlay (on top of everything) - only if debug enabled
+            if DEBUG_ENABLED {
+                let screen = gfx.screen_size();
+                debug_overlay.draw(gfx, screen.x, screen.y);
+            }
         })
 }

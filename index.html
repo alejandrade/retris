@@ -93,7 +93,7 @@
 
     function updateDPIDisplay() {
         const dpiDisplay = document.getElementById('dpi-display');
-        if (dpiDisplay) {
+        if (dpiDisplay && dpiDisplay.style.display !== 'none') {
             const dpr = window.devicePixelRatio || 1.0;
             dpiDisplay.textContent = `DPI: ${dpr.toFixed(2)}x`;
         }
@@ -132,11 +132,11 @@
         }
 
         // 3. Set Internal Buffer Size (Physical Pixels)
-        // This is the "Magic Equation" for high-DPI
+        // Note: Rust side (egor_render) will clamp this to safe limits
         canvas.width = Math.floor(visualWidth * dpr);
         canvas.height = Math.floor(visualHeight * dpr);
 
-        // 4. Set Visual Size (CSS Pixels)
+        // 4. Set Visual Size (CSS Pixels) - this stretches the buffer to fill screen
         canvas.style.width = `${visualWidth}px`;
         canvas.style.height = `${visualHeight}px`;
 
@@ -197,6 +197,14 @@
         if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
             syncDPIAndResize();
             findAndCacheMusic();
+
+            // Check debug mode and hide DPI display if debug is disabled
+            if (window.wasmBindings.is_debug_enabled && !window.wasmBindings.is_debug_enabled()) {
+                const dpiDisplay = document.getElementById('dpi-display');
+                if (dpiDisplay) {
+                    dpiDisplay.style.display = 'none';
+                }
+            }
         } else if (retryCount < MAX_RETRIES) {
             retryCount++;
             setTimeout(initializeWasmHooks, 100);
