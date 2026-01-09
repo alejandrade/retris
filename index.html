@@ -65,6 +65,17 @@
             left: 0;
         }
 
+        /* Mobile: Force iPhone 5 (Flappy Bird era) aspect ratio: 640x1136 = ~0.563 */
+        @media (max-width: 768px) {
+            canvas {
+                aspect-ratio: 640 / 1136;
+                width: 100vw;
+                height: auto;
+                max-height: 100vh;
+                object-fit: contain;
+            }
+        }
+
         #start-overlay {
             position: fixed;
             top: 0;
@@ -212,8 +223,48 @@
         }
     });
 
+    // Force iPhone 5 aspect ratio on mobile (640x1136 = Flappy Bird era)
+    function setupMobileAspectRatio() {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (!isMobile) return;
+
+        const iPhone5AspectRatio = 640 / 1136; // ~0.563
+        const updateCanvasSize = () => {
+            const canvas = document.querySelector('canvas');
+            if (!canvas) return;
+
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Calculate canvas size maintaining iPhone 5 aspect ratio
+            let canvasWidth, canvasHeight;
+            
+            if (viewportWidth / viewportHeight > iPhone5AspectRatio) {
+                // Viewport is wider than iPhone 5 ratio - constrain by height
+                canvasHeight = viewportHeight;
+                canvasWidth = canvasHeight * iPhone5AspectRatio;
+            } else {
+                // Viewport is taller than iPhone 5 ratio - constrain by width
+                canvasWidth = viewportWidth;
+                canvasHeight = canvasWidth / iPhone5AspectRatio;
+            }
+
+            // Set canvas size (WASM will handle the actual rendering)
+            canvas.style.width = canvasWidth + 'px';
+            canvas.style.height = canvasHeight + 'px';
+        };
+
+        // Update on load and resize
+        window.addEventListener('load', updateCanvasSize);
+        window.addEventListener('resize', updateCanvasSize);
+        updateCanvasSize();
+    }
+
     // Start looking for the function as soon as page loads
     window.addEventListener('load', function () {
+        // Setup mobile aspect ratio
+        setupMobileAspectRatio();
+
         // Wait a bit longer for Trunk to fully initialize
         setTimeout(() => {
             waitForStartMusic((fn) => {
