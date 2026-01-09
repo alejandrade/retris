@@ -3,7 +3,7 @@ use crate::retris_colors::*;
 use crate::tetris_shape::{ShapeName, TetrisShapeNode};
 use egor::input::{Input, KeyCode};
 use egor::math::vec2;
-use egor::render::{Color, Graphics};
+use egor::render::Graphics;
 
 /// Target Y position in screen coordinates (middle of screen)
 const TARGET_Y: f32 = 0.0; // Screen center is at 0,0

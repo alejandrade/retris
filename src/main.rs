@@ -206,7 +206,7 @@ fn main() {
 
     App::new()
         .title("Retris")
-        .screen_size_centered(640, 1048) // Initial size
+        .maximized(true)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
