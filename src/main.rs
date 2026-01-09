@@ -5,7 +5,6 @@ mod game_data;
 mod game_over_screen;
 mod game_ui;
 mod grid;
-mod logger;
 mod music_manager;
 mod retris_colors;
 mod retris_ui;
@@ -294,7 +293,7 @@ fn main() {
                     }
 
                     // Check for Enter key to start game
-                    if input.key_pressed(KeyCode::Enter) {
+                    if input.key_pressed(KeyCode::Enter) || input.mouse_pressed(MouseButton::Left) {
                         let screen = gfx.screen_size();
                         game = Some(Game::new(screen.x, screen.y));
                         state = GameState::Playing;
@@ -361,7 +360,7 @@ fn main() {
                         game = None;
                         state = GameState::Title;
                     }
-                    
+
                     // Check mobile controller quit button
                     if let Some(ref g) = game {
                         if g.mobile_quit_pressed() {
