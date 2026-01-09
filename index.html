@@ -55,9 +55,140 @@
         body {
             background: #000;
         }
+
+        canvas {
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+
+        #start-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #start-overlay-content {
+            text-align: center;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+
+        #start-overlay h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        #start-overlay p {
+            font-size: 1.2rem;
+            margin-top: 1rem;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
-<!-- Canvas will be created by the WASM application -->
+    <div id="start-overlay">
+        <div id="start-overlay-content">
+            <h1>RETRIS</h1>
+            <p>Click to Start</p>
+        </div>
+    </div>
+    <!-- Canvas will be created by the WASM application -->
+    <script>
+        const overlay = document.getElementById('start-overlay');
+        let startMusicFn = null;
+        
+        // Function to find the start_music function
+        function findStartMusic() {
+            // Check Trunk's wasmBindings object (where wasm-bindgen functions are exposed)
+            if (window.wasmBindings && window.wasmBindings.start_music && typeof window.wasmBindings.start_music === 'function') {
+                return window.wasmBindings.start_music;
+            }
+            // Check various other possible locations as fallback
+            if (typeof start_music === 'function') {
+                return start_music;
+            }
+            if (window.start_music && typeof window.start_music === 'function') {
+                return window.start_music;
+            }
+            // Check for wasm module exports
+            if (window.wasm && window.wasm.start_music) {
+                return window.wasm.start_music;
+            }
+            return null;
+        }
+        
+        // Poll for the function to become available
+        function waitForStartMusic(callback, maxAttempts = 50) {
+            let attempts = 0;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                startMusicFn = findStartMusic();
+                if (startMusicFn) {
+                    clearInterval(checkInterval);
+                    console.log('start_music function found!');
+                    callback(startMusicFn);
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.warn('start_music function not found after', maxAttempts * 100, 'ms');
+                    callback(null);
+                }
+            }, 100);
+        }
+        
+        // Set up click handler
+        overlay.addEventListener('click', function() {
+            if (startMusicFn) {
+                startMusicFn();
+            } else {
+                // If not found yet, try to find it now
+                const fn = findStartMusic();
+                if (fn) {
+                    fn();
+                } else {
+                    console.warn('start_music not available yet, will try again');
+                    waitForStartMusic((fn) => {
+                        if (fn) fn();
+                    }, 10);
+                }
+            }
+            
+            // Hide the overlay
+            overlay.classList.add('hidden');
+        });
+        
+        // Start looking for the function as soon as page loads
+        window.addEventListener('load', function() {
+            // Wait a bit longer for Trunk to fully initialize
+            setTimeout(() => {
+                waitForStartMusic((fn) => {
+                    if (fn) {
+                        startMusicFn = fn;
+                        console.log('start_music function ready:', fn);
+                    } else {
+                        // Debug: log what's available
+                        console.log('Available on window:', Object.keys(window).filter(k => k.includes('music') || k.includes('start') || k.includes('wasm')));
+                        console.log('typeof start_music:', typeof start_music);
+                        console.log('window.start_music:', window.start_music);
+                    }
+                });
+            }, 1000);
+        });
+    </script>
 </body>
 </html>

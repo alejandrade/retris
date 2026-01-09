@@ -27,8 +27,117 @@ use title_screen::TitleScreen;
 use volume_control_screen::VolumeControlScreen;
 use volume_manager::VolumeManager;
 
+#[cfg(target_arch = "wasm32")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 pub const SCREEN_WIDTH: u32 = 640;
 pub const SCREEN_HEIGHT: u32 = 1048;
+
+// Boolean flag that JavaScript can set to request music start
+#[cfg(target_arch = "wasm32")]
+static START_MUSIC_FLAG: AtomicBool = AtomicBool::new(false);
+
+/// JavaScript-callable function to start the music
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn start_music() {
+    START_MUSIC_FLAG.store(true, Ordering::Relaxed);
+}
+
+/// Helper function to create audio managers
+/// This should only be called after user interaction in WASM
+fn create_audio_managers(
+    volume_manager: &VolumeManager,
+) -> (
+    Result<SoundManager, Box<dyn std::error::Error>>,
+    Result<MusicManager, Box<dyn std::error::Error>>,
+) {
+    (
+        SoundManager::new(volume_manager.clone()),
+        MusicManager::new(volume_manager.clone()),
+    )
+}
+
+// Extension traits to hide Option checks and make game code cleaner
+trait SoundManagerOption {
+    fn play_bounce(&mut self);
+    fn play_shuffle(&mut self);
+    fn play_success(&mut self);
+    fn set_muted(&mut self, muted: bool);
+    fn update_game(&mut self, input: &egor::input::Input, delta: f32, game: &mut Game);
+}
+
+impl SoundManagerOption for Option<SoundManager> {
+    fn play_bounce(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.play_bounce();
+        }
+    }
+    
+    fn play_shuffle(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.play_shuffle();
+        }
+    }
+    
+    fn play_success(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.play_success();
+        }
+    }
+    
+    fn set_muted(&mut self, muted: bool) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.set_muted(muted);
+        }
+    }
+    
+    fn update_game(&mut self, input: &egor::input::Input, delta: f32, game: &mut Game) {
+        if let Some(mgr) = self.as_mut() {
+            game.update(input, delta, mgr);
+        }
+    }
+}
+
+trait MusicManagerOption {
+    fn update(&mut self);
+    fn start(&mut self);
+    fn set_muted(&mut self, muted: bool);
+    fn play_game_over_song(&mut self);
+    fn get_mut(&mut self) -> Option<&mut MusicManager>;
+}
+
+impl MusicManagerOption for Option<MusicManager> {
+    fn update(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.update();
+        }
+    }
+    
+    fn start(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.start();
+        }
+    }
+    
+    fn set_muted(&mut self, muted: bool) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.set_muted(muted);
+        }
+    }
+    
+    fn play_game_over_song(&mut self) {
+        if let Some(mgr) = self.as_mut() {
+            mgr.play_game_over_song();
+        }
+    }
+    
+    fn get_mut(&mut self) -> Option<&mut MusicManager> {
+        self.as_mut()
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum GameState {
@@ -56,14 +165,24 @@ fn main() {
     let volume_manager = VolumeManager::new();
     //let mut loading_screen = LoadingScreen::new(&volume_manager);
 
-    // Create sound manager and start loading in background (loads quickly)
-    let mut sound_manager =
-        SoundManager::new(volume_manager.clone()).expect("Failed to create sound manager");
-    sound_manager.play_bounce();
-    // Create music manager and start loading in background
-    let mut music_manager =
-        MusicManager::new(volume_manager.clone()).expect("Failed to create music manager");
-    music_manager.play_game_over_song();
+    // Create audio managers (lazy loaded in WASM, immediate in native)
+    let (mut sound_manager, mut music_manager) = {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Native: create immediately and wrap in Some
+            let (sound_result, music_result) = create_audio_managers(&volume_manager);
+            (
+                Some(sound_result.expect("Failed to create sound manager")),
+                Some(music_result.expect("Failed to create music manager")),
+            )
+        }
+        
+        #[cfg(target_arch = "wasm32")]
+        {
+            // WASM: start as None - will be initialized on user interaction
+            (None, None)
+        }
+    };
     // Create small mute button for bottom right
     let mut mute_button_small = MuteButton::for_bottom_right();
 
@@ -84,6 +203,29 @@ fn main() {
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
+
+            // Check if JavaScript requested to start music/audio (only once)
+            // This is when we initialize the audio managers in WASM
+            #[cfg(target_arch = "wasm32")]
+            {
+                if START_MUSIC_FLAG
+                    .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    // User has interacted - now we can create audio managers
+                    if sound_manager.is_none() || music_manager.is_none() {
+                        let (sound_result, music_result) = create_audio_managers(&volume_manager);
+                        if let Ok(sound_mgr) = sound_result {
+                            sound_manager = Some(sound_mgr);
+                        }
+                        if let Ok(music_mgr) = music_result {
+                            music_manager = Some(music_mgr);
+                            // Start music after initialization
+                            music_manager.start();
+                        }
+                    }
+                }
+            }
 
             // Load textures on first frame
             if timer.frame == 0 {
@@ -130,7 +272,7 @@ fn main() {
                     music_manager.update();
 
                     if let Some(ref mut g) = game {
-                        g.update(input, timer.delta, &mut sound_manager);
+                        sound_manager.update_game(input, timer.delta, g);
                         g.draw(gfx, timer.delta);
 
                         // Check for game over condition
@@ -159,7 +301,6 @@ fn main() {
                         let is_muted = mute_button_small.is_muted();
                         music_manager.set_muted(is_muted);
                         sound_manager.set_muted(is_muted);
-                        // Start music (will check muted internally)
                         music_manager.start();
                     }
 
@@ -222,18 +363,21 @@ fn main() {
                         let is_muted = mute_button_small.is_muted();
                         music_manager.set_muted(is_muted);
                         sound_manager.set_muted(is_muted);
-                        // Start music (will check muted internally)
                         music_manager.start();
                     }
                     mute_button_small.draw(gfx);
-                    if volume_control_screen.update(
-                        timer.delta,
-                        input,
-                        &mut music_manager,
-                        &mut sound_manager,
-                        &volume_manager,
-                    ) {
-                        state = previous_state;
+                    if let Some(ref mut music_mgr) = music_manager.get_mut() {
+                        if let Some(ref mut sound_mgr) = sound_manager.as_mut() {
+                            if volume_control_screen.update(
+                                timer.delta,
+                                input,
+                                music_mgr,
+                                sound_mgr,
+                                &volume_manager,
+                            ) {
+                                state = previous_state;
+                            }
+                        }
                     }
                 }
             }
