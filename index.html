@@ -47,6 +47,26 @@
         #start-overlay.hidden {
             display: none;
         }
+
+        #dpi-display {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 12px 24px;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            z-index: 2000;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+            box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -57,6 +77,8 @@
         <p>Click to Start</p>
     </div>
 </div>
+
+<div id="dpi-display">DPI: 1.0x</div>
 
 <script>
     const overlay = document.getElementById('start-overlay');
@@ -69,12 +91,23 @@
      */
     let lastKnownDPR = window.devicePixelRatio || 1.0;
 
+    function updateDPIDisplay() {
+        const dpiDisplay = document.getElementById('dpi-display');
+        if (dpiDisplay) {
+            const dpr = window.devicePixelRatio || 1.0;
+            dpiDisplay.textContent = `DPI: ${dpr.toFixed(2)}x`;
+        }
+    }
+
     function syncDPIAndResize() {
         const canvas = document.querySelector('canvas');
         if (!canvas) return;
 
         const dpr = window.devicePixelRatio || 1.0;
         const dprChanged = dpr !== lastKnownDPR;
+
+        // Update DPI display
+        updateDPIDisplay();
 
         // 1. Send DPR to WASM if binding is ready (especially if DPR changed)
         if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
@@ -119,6 +152,9 @@
         const currentDPR = window.devicePixelRatio || 1.0;
         if (currentDPR !== lastKnownDPR) {
             syncDPIAndResize();
+        } else {
+            // Update display even if DPR hasn't changed (in case of resize)
+            updateDPIDisplay();
         }
     }, 250); // Check every 250ms
 
@@ -192,7 +228,10 @@
     });
 
     // Start polling on load
-    window.addEventListener('load', initializeWasmHooks);
+    window.addEventListener('load', () => {
+        initializeWasmHooks();
+        updateDPIDisplay(); // Initialize DPI display
+    });
 
     // Initial canvas detection loop
     const detectionInterval = setInterval(() => {

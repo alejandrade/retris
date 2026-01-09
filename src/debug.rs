@@ -7,7 +7,7 @@ use egor::render::Graphics;
 pub struct DebugOverlay {
     click_hold_timer: Option<f32>,
     click_hold_position: Option<(f32, f32)>, // Screen coordinates (with DPI adjustment)
-    debug_squares: Vec<(f32, f32)>,          // List of positions to show squares at
+    debug_squares: Vec<(f32, f32, f32)>,      // List of (x, y, dpi) positions to show squares at
     device_pixel_ratio: f32,
 }
 
@@ -59,13 +59,15 @@ impl DebugOverlay {
                         // Add this position to debug squares if not already there
                         if let Some(pos) = self.click_hold_position {
                             // Check if this position is already in the list (within a small threshold)
-                            let already_exists = self.debug_squares.iter().any(|(x, y)| {
+                            let already_exists = self.debug_squares.iter().any(|(x, y, _)| {
                                 (x - pos.0).abs() < 5.0 && (y - pos.1).abs() < 5.0
                             });
 
                             if !already_exists {
-                                self.debug_squares.push(pos);
-                                println!("Debug square added at ({}, {})", pos.0, pos.1);
+                                // Store position with current DPI
+                                let entry = (pos.0, pos.1, self.device_pixel_ratio);
+                                self.debug_squares.push(entry);
+                                println!("Debug square added at ({}, {}) with DPI: {:.2}x", pos.0, pos.1, self.device_pixel_ratio);
                             }
                         }
                         // Reset timer to allow adding more squares if held longer
@@ -87,13 +89,29 @@ impl DebugOverlay {
 
         // Convert screen coordinates to world coordinates for drawing
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        for (screen_x, screen_y) in &self.debug_squares {
+        for (screen_x, screen_y, dpi) in &self.debug_squares {
             let world_pos = coords.screen_to_world(vec2(*screen_x, *screen_y));
 
             // Draw a small green square at this position
             gfx.rect()
                 .at(world_pos)
                 .size(vec2(Self::DEBUG_SQUARE_SIZE, Self::DEBUG_SQUARE_SIZE))
+                .color(COLOR_SOFTWARE_GREEN);
+
+            // Draw DPI text next to the square (offset to the right and slightly below)
+            let text_offset_x = Self::DEBUG_SQUARE_SIZE + 10.0;
+            let text_offset_y = Self::DEBUG_SQUARE_SIZE / 2.0;
+            let text_world_pos = coords.screen_to_world(vec2(
+                *screen_x + text_offset_x,
+                *screen_y + text_offset_y,
+            ));
+            let text_screen_pos = coords.world_to_screen(text_world_pos);
+            let dpi_text = format!("DPI: {:.2}x", dpi);
+            let text_size = 20.0;
+
+            gfx.text(&dpi_text)
+                .at(text_screen_pos)
+                .size(text_size)
                 .color(COLOR_SOFTWARE_GREEN);
         }
     }
