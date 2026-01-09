@@ -30,8 +30,6 @@ use volume_manager::VolumeManager;
 pub const SCREEN_WIDTH: u32 = 640;
 pub const SCREEN_HEIGHT: u32 = 1048;
 
-
-
 #[derive(Clone, Copy, PartialEq)]
 enum GameState {
     Title,
@@ -78,10 +76,10 @@ fn main() {
     // Create game over screen
     let game_over_screen = GameOverScreen::new();
 
-
     App::new()
         .title("Retris")
         .screen_size_centered(SCREEN_WIDTH, SCREEN_HEIGHT)
+        .resizable(false)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
