@@ -70,23 +70,26 @@ trait SoundManagerOption {
 
 impl SoundManagerOption for Option<SoundManager> {
     fn play_bounce(&mut self) {
+        println!("Play bounce");
         if let Some(mgr) = self.as_mut() {
+            println!("Play bounce for real");
+
             mgr.play_bounce();
         }
     }
-    
+
     fn play_shuffle(&mut self) {
         if let Some(mgr) = self.as_mut() {
             mgr.play_shuffle();
         }
     }
-    
+
     fn set_muted(&mut self, muted: bool) {
         if let Some(mgr) = self.as_mut() {
             mgr.set_muted(muted);
         }
     }
-    
+
     fn update_game(&mut self, input: &egor::input::Input, delta: f32, game: &mut Game) {
         if let Some(mgr) = self.as_mut() {
             game.update(input, delta, mgr);
@@ -108,25 +111,25 @@ impl MusicManagerOption for Option<MusicManager> {
             mgr.update();
         }
     }
-    
+
     fn start(&mut self) {
         if let Some(mgr) = self.as_mut() {
             mgr.start();
         }
     }
-    
+
     fn set_muted(&mut self, muted: bool) {
         if let Some(mgr) = self.as_mut() {
             mgr.set_muted(muted);
         }
     }
-    
+
     fn play_game_over_song(&mut self) {
         if let Some(mgr) = self.as_mut() {
             mgr.play_game_over_song();
         }
     }
-    
+
     fn get_mut(&mut self) -> Option<&mut MusicManager> {
         self.as_mut()
     }
@@ -169,7 +172,7 @@ fn main() {
                 Some(music_result.expect("Failed to create music manager")),
             )
         }
-        
+
         #[cfg(target_arch = "wasm32")]
         {
             // WASM: start as None - will be initialized on user interaction
@@ -184,7 +187,7 @@ fn main() {
 
     // Create volume control screen
     let mut volume_control_screen = VolumeControlScreen::new(&volume_manager);
-    let mut previous_state = GameState::Title; // Track state before opening volume control
+    let mut previous_state = GameState::VolumeControl; // Track state before opening volume control
 
     // Create game over screen
     let game_over_screen = GameOverScreen::new();
@@ -206,15 +209,36 @@ fn main() {
                     .is_ok()
                 {
                     // User has interacted - now we can create audio managers
+                    // Create both managers - they need to be created after user interaction for AudioContext
                     if sound_manager.is_none() || music_manager.is_none() {
                         let (sound_result, music_result) = create_audio_managers(&volume_manager);
-                        if let Ok(sound_mgr) = sound_result {
-                            sound_manager = Some(sound_mgr);
+
+                        // Create sound manager if it doesn't exist
+                        if sound_manager.is_none() {
+                            match sound_result {
+                                Ok(sound_mgr) => {
+                                    println!("SoundManager created successfully");
+                                    sound_manager = Some(sound_mgr);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create SoundManager: {}", e);
+                                }
+                            }
                         }
-                        if let Ok(music_mgr) = music_result {
-                            music_manager = Some(music_mgr);
-                            // Start music after initialization
-                            music_manager.start();
+
+                        // Create music manager if it doesn't exist
+                        if music_manager.is_none() {
+                            match music_result {
+                                Ok(music_mgr) => {
+                                    println!("MusicManager created successfully");
+                                    music_manager = Some(music_mgr);
+                                    // Start music after initialization
+                                    music_manager.start();
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to create MusicManager: {}", e);
+                                }
+                            }
                         }
                     }
                 }

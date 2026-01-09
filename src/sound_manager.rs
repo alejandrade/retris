@@ -1,11 +1,11 @@
 use crate::volume_manager::VolumeManager;
 use kira::{AudioManager, DefaultBackend, Tween, sound::static_sound::StaticSoundData};
-use std::sync::{Arc, Mutex};
+use std::io::Cursor;
 
 /// Manages game sound effects (not music)
 pub struct SoundManager {
     audio_manager: AudioManager<DefaultBackend>,
-    sounds: Arc<Mutex<SoundEffects>>,
+    sounds: SoundEffects,
     muted: bool,
     volume_manager: VolumeManager,
 }
@@ -18,7 +18,7 @@ struct SoundEffects {
 }
 
 impl SoundManager {
-    /// Create a new sound manager (without loading sounds yet)
+    /// Create a new sound manager and load all sound effects
     pub fn new(volume_manager: VolumeManager) -> Result<Self, Box<dyn std::error::Error>> {
         let mut audio_manager = AudioManager::<DefaultBackend>::new(Default::default())?;
 
@@ -32,17 +32,53 @@ impl SoundManager {
             initial_volume, db
         );
 
+        // Load sound effects
+        let bounce = Self::load_audio_data_from_bytes(include_bytes!("../assets/bounce.ogg")).ok();
+        let level_up = Self::load_audio_data_from_bytes(include_bytes!("../assets/level-up.ogg")).ok();
+        let shuffle = Self::load_audio_data_from_bytes(include_bytes!("../assets/shufle.ogg")).ok(); // Note: filename has typo "shufle"
+        let success = Self::load_audio_data_from_bytes(include_bytes!("../assets/success.ogg")).ok();
+
+        if bounce.is_some() {
+            println!("Loaded bounce sound");
+        } else {
+            eprintln!("Failed to load bounce sound");
+        }
+        if level_up.is_some() {
+            println!("Loaded level-up sound");
+        } else {
+            eprintln!("Failed to load level-up sound");
+        }
+        if shuffle.is_some() {
+            println!("Loaded shuffle sound");
+        } else {
+            eprintln!("Failed to load shuffle sound");
+        }
+        if success.is_some() {
+            println!("Loaded success sound");
+        } else {
+            eprintln!("Failed to load success sound");
+        }
+
         Ok(Self {
             audio_manager,
-            sounds: Arc::new(Mutex::new(SoundEffects {
-                bounce: None,
-                level_up: None,
-                shuffle: None,
-                success: None,
-            })),
+            sounds: SoundEffects {
+                bounce,
+                level_up,
+                shuffle,
+                success,
+            },
             muted: false,
             volume_manager,
         })
+    }
+
+    /// Helper to load audio data from embedded bytes
+    fn load_audio_data_from_bytes(
+        bytes: &[u8],
+    ) -> Result<StaticSoundData, Box<dyn std::error::Error>> {
+        // Clone bytes to ensure they live long enough for decoding
+        let bytes_vec = bytes.to_vec();
+        Ok(StaticSoundData::from_cursor(Cursor::new(bytes_vec))?)
     }
 
     /// Convert linear amplitude (0.0-1.0) to decibels with better perceptual curve
@@ -73,10 +109,8 @@ impl SoundManager {
     /// Play bounce sound (piece lands)
     pub fn play_bounce(&mut self) {
         if !self.muted {
-            if let Ok(sounds) = self.sounds.lock() {
-                if let Some(ref sound) = sounds.bounce {
-                    let _ = self.audio_manager.play(sound.clone());
-                }
+            if let Some(ref sound) = self.sounds.bounce {
+                let _ = self.audio_manager.play(sound.clone());
             }
         }
     }
@@ -84,10 +118,8 @@ impl SoundManager {
     /// Play level up sound
     pub fn play_level_up(&mut self) {
         if !self.muted {
-            if let Ok(sounds) = self.sounds.lock() {
-                if let Some(ref sound) = sounds.level_up {
-                    let _ = self.audio_manager.play(sound.clone());
-                }
+            if let Some(ref sound) = self.sounds.level_up {
+                let _ = self.audio_manager.play(sound.clone());
             }
         }
     }
@@ -95,10 +127,8 @@ impl SoundManager {
     /// Play shuffle sound (piece rotates)
     pub fn play_shuffle(&mut self) {
         if !self.muted {
-            if let Ok(sounds) = self.sounds.lock() {
-                if let Some(ref sound) = sounds.shuffle {
-                    let _ = self.audio_manager.play(sound.clone());
-                }
+            if let Some(ref sound) = self.sounds.shuffle {
+                let _ = self.audio_manager.play(sound.clone());
             }
         }
     }
@@ -106,10 +136,8 @@ impl SoundManager {
     /// Play success sound (lines cleared)
     pub fn play_success(&mut self) {
         if !self.muted {
-            if let Ok(sounds) = self.sounds.lock() {
-                if let Some(ref sound) = sounds.success {
-                    let _ = self.audio_manager.play(sound.clone());
-                }
+            if let Some(ref sound) = self.sounds.success {
+                let _ = self.audio_manager.play(sound.clone());
             }
         }
     }
@@ -122,10 +150,8 @@ impl SoundManager {
     /// Play a test sound (plays bounce sound)
     pub fn test_sound(&mut self) {
         if !self.muted {
-            if let Ok(sounds) = self.sounds.lock() {
-                if let Some(ref sound) = sounds.bounce {
-                    let _ = self.audio_manager.play(sound.clone());
-                }
+            if let Some(ref sound) = self.sounds.bounce {
+                let _ = self.audio_manager.play(sound.clone());
             }
         }
     }
