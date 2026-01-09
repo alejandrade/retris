@@ -84,6 +84,7 @@ pub struct MuteButton {
     is_muted: bool,
     speaker_on_texture: Option<usize>,
     speaker_off_texture: Option<usize>,
+    device_pixel_ratio: f32,
 }
 
 impl MuteButton {
@@ -98,6 +99,7 @@ impl MuteButton {
             is_muted: false,
             speaker_on_texture: None,
             speaker_off_texture: None,
+            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         }
     }
     
@@ -112,6 +114,7 @@ impl MuteButton {
             is_muted: false,
             speaker_on_texture: None,
             speaker_off_texture: None,
+            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         }
     }
     
@@ -127,6 +130,12 @@ impl MuteButton {
     
     /// Update button position based on actual screen dimensions
     pub fn update(&mut self, gfx: &mut Graphics) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::get_device_pixel_ratio;
+            self.device_pixel_ratio = get_device_pixel_ratio();
+        }
+
         let screen = gfx.screen_size();
         let screen_width = screen.x;
         let screen_height = screen.y;
@@ -158,9 +167,13 @@ impl MuteButton {
         
         let (mx, my) = input.mouse_position();
         
+        // Apply device pixel ratio to input coordinates for consistent comparison
+        let adjusted_x = mx / self.device_pixel_ratio;
+        let adjusted_y = my / self.device_pixel_ratio;
+        
         // Use screen coordinates for mouse comparison
-        mx >= self.pos.screen_x && mx <= self.pos.screen_x + self.pos.size && 
-        my >= self.pos.screen_y && my <= self.pos.screen_y + self.pos.size
+        adjusted_x >= self.pos.screen_x && adjusted_x <= self.pos.screen_x + self.pos.size && 
+        adjusted_y >= self.pos.screen_y && adjusted_y <= self.pos.screen_y + self.pos.size
     }
     
     /// Toggle mute state
@@ -204,6 +217,7 @@ pub struct VolumeSlider {
     dragging: bool,
     label: String,
     just_released: bool, // Track if mouse was just released this frame
+    device_pixel_ratio: f32,
 }
 
 impl VolumeSlider {
@@ -230,6 +244,7 @@ impl VolumeSlider {
             dragging: false,
             label: label.to_string(),
             just_released: false,
+            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         }
     }
     
@@ -245,6 +260,12 @@ impl VolumeSlider {
     /// Note: Slider position (x, y) is in world coordinates and doesn't need updating,
     /// but this method is included for consistency with other UI elements
     pub fn update(&mut self, _screen_width: f32, screen_height: f32) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::get_device_pixel_ratio;
+            self.device_pixel_ratio = get_device_pixel_ratio();
+        }
+
         // Scale height based on screen height
         let scale = Self::scale_factor(screen_height);
         self.height = Self::BASE_HEIGHT * scale;
@@ -255,6 +276,11 @@ impl VolumeSlider {
     /// Note: update() should be called first to ensure position is current
     pub fn handle_input(&mut self, input: &Input, screen_width: f32, screen_height: f32) -> bool {
         let (mx, my) = input.mouse_position();
+        
+        // Apply device pixel ratio to input coordinates for consistent comparison
+        let adjusted_x = mx / self.device_pixel_ratio;
+        let adjusted_y = my / self.device_pixel_ratio;
+        
         let mouse_pressed = input.mouse_pressed(MouseButton::Left);
         let mouse_released = input.mouse_released(MouseButton::Left);
         
@@ -268,8 +294,8 @@ impl VolumeSlider {
         let screen_y = screen_pos.y;
         
         // Check if mouse is over slider
-        let in_bounds = mx >= screen_x && mx <= screen_x + self.width &&
-                       my >= screen_y && my <= screen_y + self.height;
+        let in_bounds = adjusted_x >= screen_x && adjusted_x <= screen_x + self.width &&
+                       adjusted_y >= screen_y && adjusted_y <= screen_y + self.height;
         
         // Start dragging when clicked on slider
         if in_bounds && mouse_pressed {
@@ -284,7 +310,7 @@ impl VolumeSlider {
         
         // Update value while dragging
         if self.dragging {
-            let relative_x = (mx - screen_x).clamp(0.0, self.width);
+            let relative_x = (adjusted_x - screen_x).clamp(0.0, self.width);
             let old_value = self.value;
             self.value = relative_x / self.width;
             return (old_value - self.value).abs() > 0.01; // Value changed significantly
@@ -365,6 +391,7 @@ pub struct Button {
     width: f32,
     height: f32,
     label: String,
+    device_pixel_ratio: f32,
 }
 
 impl Button {
@@ -383,6 +410,7 @@ impl Button {
             width,
             height,
             label: label.to_string(),
+            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         }
     }
     
@@ -398,6 +426,12 @@ impl Button {
     /// Currently buttons are positioned in world coordinates at creation, so this is a no-op
     /// but included for consistency with other UI elements
     pub fn update(&mut self, _screen_width: f32, _screen_height: f32) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::get_device_pixel_ratio;
+            self.device_pixel_ratio = get_device_pixel_ratio();
+        }
+
         // Button position (x, y) is set at creation in world coordinates
         // If we need to recalculate position based on screen size, we'd do it here
     }
@@ -409,14 +443,19 @@ impl Button {
         }
         
         let (mx, my) = input.mouse_position();
+        
+        // Apply device pixel ratio to input coordinates for consistent comparison
+        let adjusted_x = mx / self.device_pixel_ratio;
+        let adjusted_y = my / self.device_pixel_ratio;
+        
         // Use coordinate system with actual screen dimensions for hit testing
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
         let screen_pos = coords.world_to_screen(vec2(self.x, self.y));
         let screen_x = screen_pos.x;
         let screen_y = screen_pos.y;
         
-        mx >= screen_x && mx <= screen_x + self.width &&
-        my >= screen_y && my <= screen_y + self.height
+        adjusted_x >= screen_x && adjusted_x <= screen_x + self.width &&
+        adjusted_y >= screen_y && adjusted_y <= screen_y + self.height
     }
     
     /// Draw the button (position should be updated via update() before calling)

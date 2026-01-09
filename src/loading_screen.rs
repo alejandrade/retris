@@ -49,7 +49,7 @@ impl LoadingScreen {
             music_slider: VolumeSlider::new(-150.0, -50.0, 300.0, "Music Volume", volume_manager.music_volume()),
             sfx_slider: VolumeSlider::new(-150.0, 50.0, 300.0, "Sound Effects Volume", volume_manager.sfx_volume()),
             ok_button: Button::new(-75.0, 150.0, 150.0, 50.0, "OK"),
-            mute_button: MuteButton::for_loading(),
+            mute_button: MuteButton::for_bottom_right(),
             test_sound_timer: 0.0,
             skip_volume_config,
             loading_start_time: 0.0,
@@ -57,7 +57,7 @@ impl LoadingScreen {
         }
     }
 
-    pub fn update(&mut self, delta: f32, input: &Input, music_manager: &mut MusicManager, sound_manager: &mut SoundManager, volume_manager: &VolumeManager) {
+    pub fn update(&mut self, delta: f32, input: &Input, music_manager: &mut MusicManager, sound_manager: &mut SoundManager, volume_manager: &VolumeManager, gfx: &mut Graphics) {
         // Update loading dots animation
         self.dots_timer += delta;
         if self.dots_timer >= 0.5 {
@@ -94,6 +94,17 @@ impl LoadingScreen {
             }
         }
         
+        // Get screen dimensions for UI updates
+        let screen = gfx.screen_size();
+        let screen_width = screen.x;
+        let screen_height = screen.y;
+        
+        // Update UI elements (this updates device_pixel_ratio)
+        self.music_slider.update(screen_width, screen_height);
+        self.sfx_slider.update(screen_width, screen_height);
+        self.ok_button.update(screen_width, screen_height);
+        self.mute_button.update(gfx);
+        
         // Update volume sliders if in config state
         if self.state == LoadingScreenState::VolumeConfig {
             // Update test sound timer
@@ -105,7 +116,7 @@ impl LoadingScreen {
                 self.test_sound_timer = 0.0;
             }
             
-            if self.music_slider.update(input) {
+            if self.music_slider.handle_input(input, screen_width, screen_height) {
                 volume_manager.set_music_volume(self.music_slider.value());
                 music_manager.update_volume();
             }
@@ -117,7 +128,7 @@ impl LoadingScreen {
                 volume_manager.save(); // Save only on release
             }
             
-            if self.sfx_slider.update(input) {
+            if self.sfx_slider.handle_input(input, screen_width, screen_height) {
                 volume_manager.set_sfx_volume(self.sfx_slider.value());
                 sound_manager.update_volume();
             }
@@ -131,10 +142,14 @@ impl LoadingScreen {
     }
     
     /// Check if ready to continue (either clicked OK or auto-ready for returning users)
-    pub fn is_ready_to_continue(&self, input: &Input) -> bool {
+    pub fn is_ready_to_continue(&self, input: &Input, gfx: &Graphics) -> bool {
+        let screen = gfx.screen_size();
+        let screen_width = screen.x;
+        let screen_height = screen.y;
+        
         match self.state {
             LoadingScreenState::Ready => true, // Auto-ready for returning users
-            LoadingScreenState::VolumeConfig => self.ok_button.is_clicked(input), // New users click OK
+            LoadingScreenState::VolumeConfig => self.ok_button.is_clicked(input, screen_width, screen_height), // New users click OK
             _ => false,
         }
     }
@@ -171,16 +186,20 @@ impl LoadingScreen {
                 }
             }
             LoadingScreenState::VolumeConfig => {
+                let screen = gfx.screen_size();
+                let screen_width = screen.x;
+                let screen_height = screen.y;
+                
                 // Draw title
                 self.draw_centered_text(gfx, "AUDIO SETTINGS", -200.0, 48.0, COLOR_TEXT_GREEN);
                 self.draw_centered_text(gfx, "Adjust volumes to your preference", -150.0, 24.0, COLOR_DARK_GRAY);
                 
                 // Draw volume sliders
-                self.music_slider.draw(gfx);
-                self.sfx_slider.draw(gfx);
+                self.music_slider.draw(gfx, screen_width, screen_height);
+                self.sfx_slider.draw(gfx, screen_width, screen_height);
                 
                 // Draw OK button
-                self.ok_button.draw(gfx);
+                self.ok_button.draw(gfx, screen_width, screen_height);
             }
         }
     }

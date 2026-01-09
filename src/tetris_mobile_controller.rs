@@ -87,12 +87,11 @@ impl TetrisMobileController {
         // Update touch capability status
         self.is_touch_capable = input.is_touch_capable();
 
-        // Get device pixel ratio from main module (set by JavaScript)
-        // #[cfg(target_arch = "wasm32")]
-        // {
-        //     use crate::get_device_pixel_ratio;
-        //     self.device_pixel_ratio = get_device_pixel_ratio();
-        // }
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::get_device_pixel_ratio;
+            self.device_pixel_ratio = get_device_pixel_ratio();
+        }
 
         if (screen_width - self.screen_width).abs() > 0.1
             || (screen_height - self.screen_height).abs() > 0.1
