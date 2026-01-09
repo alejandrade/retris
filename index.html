@@ -18,9 +18,15 @@
         }
 
         canvas {
-            display: block;
-            image-rendering: pixelated; /* Sharp pixels for that retro feel */
-        }
+    display: block;
+    image-rendering: pixelated;
+    
+    /* ADD THESE THREE LINES */
+    touch-action: none;          /* Stops the iPhone from scrolling/zooming */
+    user-select: none;           /* Stops the "copy/paste" loupe from appearing */
+    -webkit-user-select: none;
+    outline: none;               /* Removes the focus ring */
+}
 
         #start-overlay {
             position: fixed;
