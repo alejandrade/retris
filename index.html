@@ -67,16 +67,25 @@
     /**
      * DPI & RESIZING LOGIC
      */
+    let lastKnownDPR = window.devicePixelRatio || 1.0;
+
     function syncDPIAndResize() {
         const canvas = document.querySelector('canvas');
         if (!canvas) return;
 
         const dpr = window.devicePixelRatio || 1.0;
+        const dprChanged = dpr !== lastKnownDPR;
 
-        // 1. Send DPR to WASM if binding is ready
+        // 1. Send DPR to WASM if binding is ready (especially if DPR changed)
         if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
             window.wasmBindings.set_device_pixel_ratio(dpr);
+            if (dprChanged) {
+                console.log(`DPI changed from ${lastKnownDPR}x to ${dpr}x - WASM updated`);
+            }
         }
+
+        // Update last known DPR
+        lastKnownDPR = dpr;
 
         // 2. Calculate Visual (CSS) Size based on Aspect Ratio
         const TARGET_RATIO = 10 / 20; // Classic Tetris
@@ -101,10 +110,49 @@
         console.log(`DPI Sync: ${dpr}x | Buffer: ${canvas.width}x${canvas.height}`);
     }
 
-    // Listen for window resize OR DPI change (moving between monitors)
+    // Listen for window resize
     window.addEventListener('resize', syncDPIAndResize);
-    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
-        .addEventListener('change', syncDPIAndResize, {once: true});
+
+    // Continuous DPI monitoring (for moving between monitors with different DPI)
+    // Check for DPI changes periodically
+    let dpiCheckInterval = setInterval(() => {
+        const currentDPR = window.devicePixelRatio || 1.0;
+        if (currentDPR !== lastKnownDPR) {
+            syncDPIAndResize();
+        }
+    }, 250); // Check every 250ms
+
+    // Also use matchMedia for DPI change detection (more efficient when supported)
+    // Create a media query for the current DPI
+    function setupDPIChangeListener() {
+        const currentDPR = window.devicePixelRatio || 1.0;
+        const mediaQuery = window.matchMedia(`(resolution: ${currentDPR}dppx)`);
+        
+        const handleDPIChange = (e) => {
+            if (!e.matches) {
+                // DPI changed, update immediately
+                syncDPIAndResize();
+                // Re-setup listener for new DPI
+                setupDPIChangeListener();
+            }
+        };
+        
+        // Remove old listener if it exists
+        if (mediaQuery.removeEventListener) {
+            mediaQuery.removeEventListener('change', handleDPIChange);
+        }
+        
+        // Add new listener
+        if (mediaQuery.addEventListener) {
+            mediaQuery.addEventListener('change', handleDPIChange);
+        } else {
+            // Fallback for older browsers
+            mediaQuery.addListener(handleDPIChange);
+        }
+    }
+    
+    // Setup initial DPI change listener
+    setupDPIChangeListener();
 
     /**
      * WASM INITIALIZATION
