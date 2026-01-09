@@ -3,41 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- SEO Meta Tags -->
     <title>Retris - A Tetris Game Built with Rust</title>
-    <meta name="description"
-          content="Play Retris, a classic Tetris game built with Rust. Features 5 piece types, wall kick mechanics, and smooth gameplay.">
-    <meta name="keywords" content="tetris, retris, rust, wasm, webassembly, game, puzzle, classic, tetromino">
-    <meta name="author" content="Retris">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://alejandrade.github.io/">
-
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://alejandrade.github.io/retris/"/>
-    <meta property="og:title" content="Retris - A Tetris Game Built with Rust">
-    <meta property="og:description" content="Play Retris, a classic Tetris game built with Rust and WebAssembly.">
-    <meta property="og:image" content="https://github.com/alejandrade.png"/>
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://alejandrade.github.io/">
-    <meta property="twitter:title" content="Retris - A Tetris Game Built with Rust">
-    <meta property="twitter:description" content="Play Retris, a classic Tetris game built with Rust and WebAssembly.">
-    <meta property="twitter:image" content="https://github.com/alejandrade.png"/>
-
-    <!-- Mobile -->
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="apple-mobile-web-app-title" content="Retris">
-
-    <!-- Theme Color -->
-    <meta name="theme-color" content="#000000">
-
-    <!-- WASM Application -->
-    <link data-trunk rel="rust"/>
-
     <style>
         body, html {
             margin: 0;
@@ -53,7 +19,7 @@
 
         canvas {
             display: block;
-            image-rendering: pixelated; /* Keep it retro-sharp */
+            image-rendering: pixelated; /* Sharp pixels for that retro feel */
         }
 
         #start-overlay {
@@ -78,191 +44,109 @@
     </style>
 </head>
 <body>
+
 <div id="start-overlay">
     <div id="start-overlay-content">
         <h1>RETRIS</h1>
         <p>Click to Start</p>
     </div>
 </div>
-<!-- Canvas will be created by the WASM application -->
+
 <script>
     const overlay = document.getElementById('start-overlay');
     let startMusicFn = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 50;
 
-    // Function to find the start_music function
-    function findStartMusic() {
-        // Check Trunk's wasmBindings object (where wasm-bindgen functions are exposed)
-        if (window.wasmBindings && window.wasmBindings.start_music && typeof window.wasmBindings.start_music === 'function') {
-            return window.wasmBindings.start_music;
-        }
-        // Check various other possible locations as fallback
-        if (typeof start_music === 'function') {
-            return start_music;
-        }
-        if (window.start_music && typeof window.start_music === 'function') {
-            return window.start_music;
-        }
-        // Check for wasm module exports
-        if (window.wasm && window.wasm.start_music) {
-            return window.wasm.start_music;
-        }
-        return null;
-    }
-
-    // Poll for the function to become available
-    function waitForStartMusic(callback, maxAttempts = 50) {
-        let attempts = 0;
-        const checkInterval = setInterval(() => {
-            attempts++;
-            startMusicFn = findStartMusic();
-            if (startMusicFn) {
-                clearInterval(checkInterval);
-                console.log('start_music function found!');
-                callback(startMusicFn);
-            } else if (attempts >= maxAttempts) {
-                clearInterval(checkInterval);
-                console.warn('start_music function not found after', maxAttempts * 100, 'ms');
-                callback(null);
-            }
-        }, 100);
-    }
-
-    // Function to focus the canvas
-    function focusCanvas() {
-        // Wait for canvas to be created by WASM
-        const findCanvas = (maxAttempts = 50) => {
-            let attempts = 0;
-            const checkInterval = setInterval(() => {
-                attempts++;
-                const canvas = document.querySelector('canvas');
-                if (canvas) {
-                    clearInterval(checkInterval);
-                    // Canvas needs tabindex to be focusable
-                    if (!canvas.hasAttribute('tabindex')) {
-                        canvas.setAttribute('tabindex', '0');
-                    }
-                    canvas.focus();
-                    console.log('Canvas focused');
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
-                    console.warn('Canvas not found after', maxAttempts * 100, 'ms');
-                }
-            }, 100);
-        };
-        findCanvas();
-    }
-
-    // Set up click handler
-    overlay.addEventListener('click', function () {
-        // Hide the overlay immediately
-        overlay.classList.add('hidden');
-
-        // Try to start music
-        if (startMusicFn) {
-            startMusicFn();
-            // Focus canvas after music starts
-            focusCanvas();
-        } else {
-            // If not found yet, try to find it now
-            const fn = findStartMusic();
-            if (fn) {
-                fn();
-                startMusicFn = fn; // Cache it for next time
-                // Focus canvas after music starts
-                focusCanvas();
-            } else {
-                console.warn('start_music not available yet, will try again');
-                // Poll for the function and call it when found
-                waitForStartMusic((fn) => {
-                    if (fn) {
-                        fn();
-                        startMusicFn = fn; // Cache it for next time
-                    }
-                    // Focus canvas after attempting to start music
-                    focusCanvas();
-                }, 10);
-            }
-        }
-    });
-
-
-    // Function to set device pixel ratio in Rust
-    function setDevicePixelRatio() {
-        const dpr = window.devicePixelRatio || 1.0;
-        console.log("this is happening?", dpr)
-
-        if (window.wasmBindings.set_device_pixel_ratio) {
-            window.wasmBindings.set_device_pixel_ratio(dpr);
-            console.log('Device pixel ratio set to:', dpr);
-        } else {
-            // Wait for WASM to load
-            setTimeout(setDevicePixelRatio, 100);
-        }
-    }
-
-    // Start looking for the function as soon as page loads
-    window.addEventListener('load', function () {
-        // Wait a bit longer for Trunk to fully initialize
-        setTimeout(() => {
-            // Set device pixel ratio
-            setDevicePixelRatio();
-            waitForStartMusic((fn) => {
-                if (fn) {
-                    startMusicFn = fn;
-                    console.log('start_music function ready:', fn);
-                } else {
-                    // Debug: log what's available
-                    console.log('Available on window:', Object.keys(window).filter(k => k.includes('music') || k.includes('start') || k.includes('wasm')));
-                    console.log('typeof start_music:', typeof start_music);
-                    console.log('window.start_music:', window.start_music);
-                }
-            });
-        }, 1000);
-    });
-
-    function resizeGame() {
+    /**
+     * DPI & RESIZING LOGIC
+     */
+    function syncDPIAndResize() {
         const canvas = document.querySelector('canvas');
         if (!canvas) return;
 
-        // 1. Define your game's "Natural" Aspect Ratio (Width / Height)
-        // For a standard Tetris board (10x20), use 0.5.
-        // If your WASM has a specific resolution like 800x600, use 800/600.
-        const TARGET_RATIO = 10 / 20;
+        const dpr = window.devicePixelRatio || 1.0;
 
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-        const windowRatio = windowWidth / windowHeight;
-
-        let newWidth, newHeight;
-
-        // 2. Calculate the best fit
-        if (windowRatio > TARGET_RATIO) {
-            // Window is too wide (horizontal) -> match height
-            newHeight = windowHeight;
-            newWidth = newHeight * TARGET_RATIO;
-        } else {
-            // Window is too tall (vertical) -> match width
-            newWidth = windowWidth;
-            newHeight = newWidth / TARGET_RATIO;
+        // 1. Send DPR to WASM if binding is ready
+        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
+            window.wasmBindings.set_device_pixel_ratio(dpr);
         }
 
-        // 3. Apply the visual size (the CSS size)
-        canvas.style.width = `${newWidth - 10}px`;
-        canvas.style.height = `${newHeight}px`;
+        // 2. Calculate Visual (CSS) Size based on Aspect Ratio
+        const TARGET_RATIO = 10 / 20; // Classic Tetris
+        let visualWidth = window.innerWidth;
+        let visualHeight = window.innerHeight;
+
+        if (visualWidth / visualHeight > TARGET_RATIO) {
+            visualWidth = visualHeight * TARGET_RATIO;
+        } else {
+            visualHeight = visualWidth / TARGET_RATIO;
+        }
+
+        // 3. Set Internal Buffer Size (Physical Pixels)
+        // This is the "Magic Equation" for high-DPI
+        canvas.width = Math.floor(visualWidth * dpr);
+        canvas.height = Math.floor(visualHeight * dpr);
+
+        // 4. Set Visual Size (CSS Pixels)
+        canvas.style.width = `${visualWidth}px`;
+        canvas.style.height = `${visualHeight}px`;
+
+        console.log(`DPI Sync: ${dpr}x | Buffer: ${canvas.width}x${canvas.height}`);
     }
 
-    // Run resize whenever the window changes size
-    window.addEventListener('resize', resizeGame);
+    // Listen for window resize OR DPI change (moving between monitors)
+    window.addEventListener('resize', syncDPIAndResize);
+    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+        .addEventListener('change', syncDPIAndResize, {once: true});
 
-    // Also run it periodically in the beginning until the canvas is created
-    const resizeInterval = setInterval(() => {
+    /**
+     * WASM INITIALIZATION
+     */
+    function initializeWasmHooks() {
+        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
+            syncDPIAndResize();
+            findAndCacheMusic();
+        } else if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            setTimeout(initializeWasmHooks, 100);
+        }
+    }
+
+    function findAndCacheMusic() {
+        if (window.wasmBindings?.start_music) {
+            startMusicFn = window.wasmBindings.start_music;
+        }
+    }
+
+    /**
+     * INTERACTION HANDLERS
+     */
+    overlay.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+
+        // Ensure we have the latest music function
+        findAndCacheMusic();
+        if (startMusicFn) startMusicFn();
+
+        // Focus the canvas for keyboard input
         const canvas = document.querySelector('canvas');
         if (canvas) {
-            resizeGame();
-            clearInterval(resizeInterval);
+            canvas.setAttribute('tabindex', '0');
+            canvas.focus();
+        }
+    });
+
+    // Start polling on load
+    window.addEventListener('load', initializeWasmHooks);
+
+    // Initial canvas detection loop
+    const detectionInterval = setInterval(() => {
+        if (document.querySelector('canvas')) {
+            syncDPIAndResize();
+            clearInterval(detectionInterval);
         }
     }, 100);
-
 
 </script>
 </body>
