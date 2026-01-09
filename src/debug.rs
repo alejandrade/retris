@@ -32,6 +32,7 @@ impl DebugOverlay {
         }
 
         // Check for mouse or touch input
+        #[cfg(target_arch = "wasm32")]
         let is_pressed = input.mouse_pressed(MouseButton::Left);
         let is_held = input.mouse_held(MouseButton::Left) || input.touch_count() > 0;
         let (input_x, input_y) = if input.touch_count() > 0 {
@@ -79,7 +80,10 @@ impl DebugOverlay {
         };
 
         #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = (input_x, input_y);
+        let (adjusted_x, adjusted_y) = {
+            let _ = (screen_width, screen_height); // Acknowledge unused parameters
+            (input_x, input_y)
+        };
 
         if is_held {
             // Check if this is a new press (timer is None)

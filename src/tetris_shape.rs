@@ -346,6 +346,9 @@ pub struct TetrisShapeNode {
     pub grid_height_cells: usize,
     pub fall_timer: f32,            // Accumulator for downward movement
     pub horizontal_move_timer: f32, // Accumulator for horizontal movement
+    pub das_timer: f32,             // DAS (Delayed Auto Shift) timer
+    pub das_active: bool,           // Whether continuous movement is active
+    pub last_direction: i32,        // Last horizontal direction (-1, 0, 1)
 }
 
 impl TetrisShapeNode {
@@ -389,6 +392,9 @@ impl TetrisShapeNode {
             grid_height_cells,
             fall_timer: 0.0, // Start at 0 so piece doesn't immediately fall on spawn
             horizontal_move_timer: 0.0,
+            das_timer: 0.0,
+            das_active: false,
+            last_direction: 0,
         }
     }
 
@@ -417,6 +423,9 @@ impl TetrisShapeNode {
             grid_height_cells,
             fall_timer: 0.0,
             horizontal_move_timer: 0.0,
+            das_timer: 0.0,
+            das_active: false,
+            last_direction: 0,
         }
     }
 
@@ -583,9 +592,10 @@ impl TetrisShapeNode {
             }
         }
 
-        // Handle horizontal movement - timer-based, cells per second
-        // Horizontal movement speed in cells per second (adjustable float)
-        const HORIZONTAL_SPEED: f32 = 10.0; // cells per second
+        // Handle horizontal movement with DAS (Delayed Auto Shift)
+        // DAS: Initial press moves immediately, then delay, then continuous movement
+        const DAS_DELAY: f32 = 0.133; // Delay before auto-repeat starts (seconds)
+        const ARR_SPEED: f32 = 20.0;  // Auto-Repeat Rate (cells per second after DAS activates)
 
         if !self.stopped {
             let moving_left = input.key_pressed(KeyCode::ArrowLeft)
@@ -605,23 +615,52 @@ impl TetrisShapeNode {
             };
 
             if let Some(dir) = direction {
-                let time_per_cell = 1.0 / HORIZONTAL_SPEED;
-                self.horizontal_move_timer += fixed_delta;
+                // Check if direction changed
+                if dir != self.last_direction {
+                    // Direction changed - reset DAS and move immediately
+                    self.last_direction = dir;
+                    self.das_timer = 0.0;
+                    self.das_active = false;
+                    self.horizontal_move_timer = 0.0;
 
-                // Process horizontal movement timer
-                while self.horizontal_move_timer >= time_per_cell {
-                    // Check if we can move in this direction
+                    // Initial move on direction press
                     if self.can_move_horizontal(dir, grid) {
                         self.cell_x += dir;
-                        self.horizontal_move_timer -= time_per_cell;
+                    }
+                } else {
+                    // Same direction held - update DAS
+                    if !self.das_active {
+                        // In DAS delay phase
+                        self.das_timer += fixed_delta;
+                        if self.das_timer >= DAS_DELAY {
+                            // DAS delay complete - activate auto-repeat
+                            self.das_active = true;
+                            self.horizontal_move_timer = 0.0;
+                        }
                     } else {
-                        // Can't move, reset timer to prevent accumulation
-                        self.horizontal_move_timer = 0.0;
-                        break;
+                        // DAS active - continuous movement at ARR speed
+                        let time_per_cell = 1.0 / ARR_SPEED;
+                        self.horizontal_move_timer += fixed_delta;
+
+                        // Process horizontal movement timer
+                        while self.horizontal_move_timer >= time_per_cell {
+                            // Check if we can move in this direction
+                            if self.can_move_horizontal(dir, grid) {
+                                self.cell_x += dir;
+                                self.horizontal_move_timer -= time_per_cell;
+                            } else {
+                                // Hit wall - keep DAS active but stop moving
+                                self.horizontal_move_timer = 0.0;
+                                break;
+                            }
+                        }
                     }
                 }
             } else {
-                // Not moving, reset timer
+                // No direction held - reset DAS
+                self.last_direction = 0;
+                self.das_timer = 0.0;
+                self.das_active = false;
                 self.horizontal_move_timer = 0.0;
             }
         }

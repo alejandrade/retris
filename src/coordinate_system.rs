@@ -1,19 +1,5 @@
 use egor::math::{Vec2, vec2};
 
-/// Get the device pixel ratio (for use in Rust code)
-/// This is a thin wrapper around the main module's function
-
-#[allow(dead_code)]
-#[cfg(target_arch = "wasm32")]
-pub fn get_device_pixel_ratio() -> f32 {
-    crate::get_device_pixel_ratio()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn get_device_pixel_ratio() -> f32 {
-    1.0 // Default for non-WASM builds
-}
-
 /// Fixed aspect ratio matching the original screen dimensions (640x1048)
 const ASPECT_RATIO: f32 = 640.0 / 1048.0; // width / height
 

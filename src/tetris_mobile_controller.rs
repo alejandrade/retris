@@ -20,8 +20,6 @@ pub struct TetrisMobileController {
     red_button_pressed: bool,
     // Track if device is touch capable
     is_touch_capable: bool,
-    // Device pixel ratio (detected automatically from coordinate mismatch)
-    device_pixel_ratio: f32,
 }
 
 impl TetrisMobileController {
@@ -50,7 +48,6 @@ impl TetrisMobileController {
             quit_pressed: false,
             red_button_pressed: false,
             is_touch_capable: false,
-            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         };
         controller.update_positions();
         controller
@@ -174,7 +171,10 @@ impl TetrisMobileController {
     ) {
         // Convert window coordinates to buffer coordinates using the shared helper
         let (buffer_x, buffer_y) = crate::retris_ui::window_to_buffer_coords_detailed(
-            x, y, self.screen_width, self.screen_height
+            x,
+            y,
+            self.screen_width,
+            self.screen_height,
         );
 
         // Convert to world coordinates for comparison
@@ -249,14 +249,6 @@ impl TetrisMobileController {
                 }
             }
         }
-    }
-
-    fn is_point_in_square(&self, px: f32, py: f32, center: Vec2, size: f32) -> bool {
-        let half = size / 2.0;
-        px >= center.x - half
-            && px <= center.x + half
-            && py >= center.y - half
-            && py <= center.y + half
     }
 
     pub fn draw(&self, gfx: &mut Graphics) {

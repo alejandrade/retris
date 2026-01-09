@@ -109,18 +109,13 @@
         // Update DPI display
         updateDPIDisplay();
 
-        // 1. Send DPR to WASM if binding is ready (especially if DPR changed)
-        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
-            window.wasmBindings.set_device_pixel_ratio(dpr);
-            if (dprChanged) {
-                console.log(`DPI changed from ${lastKnownDPR}x to ${dpr}x - WASM updated`);
-            }
+        // Update last known DPR
+        if (dprChanged) {
+            console.log(`DPI changed from ${lastKnownDPR}x to ${dpr}x`);
+            lastKnownDPR = dpr;
         }
 
-        // Update last known DPR
-        lastKnownDPR = dpr;
-
-        // 2. Calculate Visual (CSS) Size based on Aspect Ratio
+        // Calculate Visual (CSS) Size based on Aspect Ratio
         const TARGET_RATIO = 10 / 20; // Classic Tetris
         let visualWidth = window.innerWidth;
         let visualHeight = window.innerHeight;
@@ -131,16 +126,16 @@
             visualHeight = visualWidth / TARGET_RATIO;
         }
 
-        // 3. Set Internal Buffer Size (Physical Pixels)
+        // Set Internal Buffer Size (Physical Pixels)
         // Note: Rust side (egor_render) will clamp this to safe limits
         canvas.width = Math.floor(visualWidth * dpr);
         canvas.height = Math.floor(visualHeight * dpr);
 
-        // 4. Set Visual Size (CSS Pixels) - this stretches the buffer to fill screen
+        // Set Visual Size (CSS Pixels) - this stretches the buffer to fill screen
         canvas.style.width = `${visualWidth}px`;
         canvas.style.height = `${visualHeight}px`;
 
-        console.log(`DPI Sync: ${dpr}x | Buffer: ${canvas.width}x${canvas.height}`);
+        console.log(`Resize: DPI=${dpr}x | Buffer=${canvas.width}x${canvas.height} | CSS=${visualWidth}x${visualHeight}`);
     }
 
     // Listen for window resize
@@ -194,7 +189,7 @@
      * WASM INITIALIZATION
      */
     function initializeWasmHooks() {
-        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
+        if (window.wasmBindings) {
             syncDPIAndResize();
             findAndCacheMusic();
 

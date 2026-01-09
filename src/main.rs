@@ -44,11 +44,6 @@ const DEBUG_ENABLED: bool = false;
 #[cfg(target_arch = "wasm32")]
 static START_MUSIC_FLAG: AtomicBool = AtomicBool::new(false);
 
-/// Device pixel ratio (set by JavaScript, defaults to 1.0)
-#[cfg(target_arch = "wasm32")]
-static DEVICE_PIXEL_RATIO: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0x3F800000); // 1.0 as f32 bits
-
 /// JavaScript-callable function to start the music
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -56,19 +51,12 @@ pub fn start_music() {
     START_MUSIC_FLAG.store(true, Ordering::Relaxed);
 }
 
-/// JavaScript-callable function to set device pixel ratio
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub fn set_device_pixel_ratio(ratio: f32) {
-    let bits = ratio.to_bits();
-    DEVICE_PIXEL_RATIO.store(bits, Ordering::Relaxed);
-}
-
-/// Get the device pixel ratio (for use in Rust code)
+/// Get the device pixel ratio directly from the browser
 #[cfg(target_arch = "wasm32")]
 pub fn get_device_pixel_ratio() -> f32 {
-    let bits = DEVICE_PIXEL_RATIO.load(Ordering::Relaxed);
-    f32::from_bits(bits)
+    web_sys::window()
+        .and_then(|w| Some(w.device_pixel_ratio() as f32))
+        .unwrap_or(1.0)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
