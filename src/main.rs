@@ -148,7 +148,13 @@ fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
-    let mut state = GameState::VolumeControl;
+    // Check if volume settings exist in storage - if yes, go to Title, else VolumeControl
+    let mut state = if crate::storage::Storage::has_volume_settings() {
+        GameState::Title
+    } else {
+        GameState::VolumeControl
+    };
+
     let mut title_screen = TitleScreen::new();
     let mut game: Option<Game> = None;
     let mut background = Background::new(100);

@@ -68,6 +68,19 @@ impl Storage {
         settings
     }
     
+    /// Check if volume settings exist in storage
+    pub fn has_volume_settings() -> bool {
+        #[cfg(target_arch = "wasm32")]
+        {
+            Self::load_volume_web().is_some()
+        }
+        
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::load_volume_native().is_some()
+        }
+    }
+
     /// Save volume settings to storage
     /// Also updates the cache with the new settings
     pub fn save_volume(settings: &VolumeSettings) {

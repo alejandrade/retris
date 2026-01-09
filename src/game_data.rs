@@ -158,22 +158,22 @@ impl<T> GameTable<T> {
 }
 
 /// Manages the scoring system with EXPONENTIAL multipliers and level progression
-/// 
+///
 /// ## Scoring Formula:
 /// `points = 137 × rows_bonus × previous_multiplier × combo_multiplier × level_multiplier`
-/// 
+///
 /// - **Base Points**: 137 (prime number for interesting scores)
-/// 
+///
 /// - **Rows Bonus** (exponential - 2^n - 1):
 ///   - 1 row: 1x
 ///   - 2 rows: 3x
 ///   - 3 rows: 7x
 ///   - 4 rows (Tetris!): 15x 🔥
-/// 
+///
 /// - **Previous Multiplier**: Carries over from last clear (starts at 1x)
 ///   - Clear a Tetris → next clear gets 15x multiplier!
 ///   - This compounds with the next clear's rows_bonus
-/// 
+///
 /// - **Combo Multiplier** (exponential - 2^(combo-1)):
 ///   - 1st consecutive clear: 1x
 ///   - 2nd consecutive clear: 2x
@@ -181,14 +181,14 @@ impl<T> GameTable<T> {
 ///   - 4th consecutive clear: 8x
 ///   - 5th consecutive clear: 16x 💥
 ///   - Resets to 0 if a piece lands without clearing
-/// 
+///
 /// - **Level Multiplier**: Rewards survival at high speeds!
 ///   - Level 0-4: 1x
 ///   - Level 5-9: 2x
 ///   - Level 10-14: 3x
 ///   - Level 15-19: 5x
 ///   - Level 20+: 8x 🚀
-/// 
+///
 /// ## Example Scoring Sequences:
 /// - Level 0, Clear 1 row: 137 × 1 × 1 × 1 × 1 = 137 points
 /// - Level 0, Clear 4 rows (Tetris): 137 × 15 × 1 × 1 × 1 = 2,055 points
@@ -196,18 +196,18 @@ impl<T> GameTable<T> {
 /// - Level 10, Clear 4 rows (Tetris): 137 × 15 × 1 × 1 × 3 = 6,165 points!
 /// - Level 20, Clear 4 rows (Tetris): 137 × 15 × 1 × 1 × 8 = 16,440 points!! 💰
 /// - Level 20, Clear 4 more (combo!): 137 × 15 × 15 × 2 × 8 = 493,200 points!!! 🔥💥🚀
-/// 
+///
 /// - **Level progression**: Every 10 lines cleared increases level and drop speed
 pub struct ScoreManager {
     score: u64,
-    lines_cleared: u32,
-    level: u32,
-    current_multiplier: u32,  // Based on rows cleared in one drop
-    combo_count: u32,         // Consecutive clears without missing
+    lines_cleared: u16,
+    level: u16,
+    current_multiplier: u32, // Based on rows cleared in one drop
+    combo_count: u32,        // Consecutive clears without missing
     high_score: u64,
-    high_score_needs_sync: bool,  // True if high score needs to be uploaded to server
+    high_score_needs_sync: bool, // True if high score needs to be uploaded to server
     base_points_per_row: u64,
-    lines_per_level: u32,
+    lines_per_level: u16,
 }
 
 impl ScoreManager {
@@ -217,10 +217,10 @@ impl ScoreManager {
     /// Loads high score from storage
     pub fn new() -> Self {
         use crate::storage::Storage;
-        
+
         let game_data = Storage::load_game_data();
         println!("Loaded high score from storage: {}", game_data.high_score);
-        
+
         Self {
             score: 0,
             lines_cleared: 0,
@@ -234,19 +234,18 @@ impl ScoreManager {
         }
     }
 
-
     /// Get the current score
     pub fn score(&self) -> u64 {
         self.score
     }
 
     /// Get the current level
-    pub fn level(&self) -> u32 {
+    pub fn level(&self) -> u16 {
         self.level
     }
 
     /// Get total lines cleared
-    pub fn lines_cleared(&self) -> u32 {
+    pub fn lines_cleared(&self) -> u16 {
         self.lines_cleared
     }
 
@@ -267,7 +266,7 @@ impl ScoreManager {
 
     /// Call this when rows are cleared
     /// Returns the points awarded for this clear
-    pub fn on_rows_cleared(&mut self, rows_cleared: u32) -> u64 {
+    pub fn on_rows_cleared(&mut self, rows_cleared: u16) -> u64 {
         if rows_cleared == 0 {
             return 0;
         }
@@ -284,9 +283,9 @@ impl ScoreManager {
         self.combo_count += 1;
 
         // Calculate points with EXPONENTIAL multipliers:
-        // 
+        //
         // 1. Base points per row (137 by default - a prime number)
-        // 
+        //
         // 2. Rows bonus - exponential based on rows cleared at once:
         //    - 1 row: 1x (base)
         //    - 2 rows: 3x (1.5x per row)
@@ -299,10 +298,10 @@ impl ScoreManager {
             4 => 15,
             _ => (1 << rows_cleared) - 1, // 2^n - 1 for higher
         };
-        
+
         // 3. Previous clear multiplier (from last drop)
         let previous_multiplier = self.current_multiplier as u64;
-        
+
         // 4. Combo multiplier - gets exponential with chain length:
         //    Combo 1: 1x
         //    Combo 2: 2x
@@ -310,7 +309,7 @@ impl ScoreManager {
         //    Combo 4: 8x
         //    Combo 5: 16x (insane!)
         let combo_multiplier = 1u64 << (self.combo_count - 1); // 2^(combo-1)
-        
+
         // 5. Level multiplier - reward players for surviving at high levels!
         //    Level 0-4: 1x
         //    Level 5-9: 2x
@@ -324,14 +323,14 @@ impl ScoreManager {
             15..=19 => 5,
             _ => 8, // Level 20+
         };
-        
+
         // Final formula: base × rows_bonus × previous_multiplier × combo_multiplier × level_multiplier
-        let points = self.base_points_per_row 
-            * rows_bonus_multiplier 
-            * previous_multiplier 
+        let points = self.base_points_per_row
+            * rows_bonus_multiplier
+            * previous_multiplier
             * combo_multiplier
             * level_multiplier;
-        
+
         self.score += points;
 
         // Check if this is a new high score and save immediately
@@ -366,7 +365,7 @@ impl ScoreManager {
     /// Save the current high score to storage
     /// This is called automatically when a new high score is achieved
     fn save_high_score(&self) {
-        use crate::storage::{Storage, GameData};
+        use crate::storage::{GameData, Storage};
         Storage::save_game_data(&GameData {
             high_score: self.high_score,
         });
@@ -378,7 +377,6 @@ impl ScoreManager {
         self.high_score = high_score;
         self.high_score_needs_sync = false;
     }
-
 }
 
 impl Default for ScoreManager {

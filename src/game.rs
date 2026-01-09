@@ -116,7 +116,9 @@ impl Game {
 
                             // Award points for clearing lines (need mutable reference)
                             let old_level = self.score_manager.level();
-                            let points = self.score_manager_mut().on_rows_cleared(lines_cleared as u32);
+                            let points = self
+                                .score_manager_mut()
+                                .on_rows_cleared(lines_cleared as u16);
                             let new_level = self.score_manager.level();
                             let combo = self.score_manager.combo_count();
                             let multiplier = self.score_manager.multiplier();
@@ -143,14 +145,37 @@ impl Game {
                             };
 
                             if combo > 2 {
-                                println!("🔥💥 {} COMBO! {}{} +{} points! ({}x next) [Lv{} | Total: {}]", 
-                                    combo, clear_name, level_indicator, points, multiplier, new_level, total_score);
+                                println!(
+                                    "🔥💥 {} COMBO! {}{} +{} points! ({}x next) [Lv{} | Total: {}]",
+                                    combo,
+                                    clear_name,
+                                    level_indicator,
+                                    points,
+                                    multiplier,
+                                    new_level,
+                                    total_score
+                                );
                             } else if combo > 1 {
-                                println!("🔥 COMBO x{}! {}{} +{} points! ({}x next) [Lv{} | Total: {}]", 
-                                    combo, clear_name, level_indicator, points, multiplier, new_level, total_score);
+                                println!(
+                                    "🔥 COMBO x{}! {}{} +{} points! ({}x next) [Lv{} | Total: {}]",
+                                    combo,
+                                    clear_name,
+                                    level_indicator,
+                                    points,
+                                    multiplier,
+                                    new_level,
+                                    total_score
+                                );
                             } else {
-                                println!("{}{} cleared! +{} points ({}x next) [Lv{} | Total: {}]", 
-                                    clear_name, level_indicator, points, multiplier, new_level, total_score);
+                                println!(
+                                    "{}{} cleared! +{} points ({}x next) [Lv{} | Total: {}]",
+                                    clear_name,
+                                    level_indicator,
+                                    points,
+                                    multiplier,
+                                    new_level,
+                                    total_score
+                                );
                             }
 
                             // Check for level up
@@ -186,7 +211,7 @@ impl Game {
         let spawn_cell_y = SPAWN_ROW;
 
         let new_piece = TetrisShapeNode::new(
-            SPAWN_VELOCITY,
+            SPAWN_VELOCITY + self.score_manager.level(),
             spawn_cell_x,
             spawn_cell_y,
             cell_size,
