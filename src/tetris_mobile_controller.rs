@@ -6,93 +6,87 @@ use egor::render::{Color, Graphics};
 pub struct TetrisMobileController {
     screen_width: f32,
     screen_height: f32,
-    // D-pad buttons (bottom left)
-    left_button_world_pos: Vec2,
-    right_button_world_pos: Vec2,
-    down_button_world_pos: Vec2,
-    // Rotate button (bottom right, circle)
-    rotate_button_world_pos: Vec2,
     // Quit button (top center, Q)
     quit_button_world_pos: Vec2,
+    quit_button_size: f32,
+    // Red button (under grid)
+    red_button_world_pos: Vec2,
+    red_button_size: f32,
     // Button states
     left_held: bool,
     right_held: bool,
-    down_held: bool,
     rotate_pressed: bool,
     quit_pressed: bool,
-    // Touch tracking
-    active_touch_id: Option<u64>,
+    red_button_pressed: bool,
+    // Track if device is touch capable
+    is_touch_capable: bool,
+    // Device pixel ratio (detected automatically from coordinate mismatch)
+    device_pixel_ratio: f32,
 }
 
 impl TetrisMobileController {
-    // Constants for UI sizing
-    const DPAD_BUTTON_SIZE: f32 = 150.0; // Increased from 60.0
-    const DPAD_PADDING: f32 = 80.0; // Increased from 20.0 (distance from edges)
-    const DPAD_BUTTON_SPACING: f32 = 5.0; // Spacing between buttons (reduced from implicit spacing)
-    const ROTATE_BUTTON_RADIUS: f32 = 75.0; // Increased from 50.0
-    const QUIT_BUTTON_SIZE: f32 = 80.0; // Increased from 50.0
-    const BUTTON_BORDER_WIDTH: f32 = 4.0; // Increased border width
+    // Base constants for UI sizing (normalized to 1048px screen height)
+    const BASE_QUIT_BUTTON_SIZE: f32 = 80.0;
+    const BASE_RED_BUTTON_SIZE: f32 = 100.0;
+    const BASE_BUTTON_BORDER_WIDTH: f32 = 4.0;
+    const BASE_PADDING: f32 = 80.0;
+
+    // Helper to calculate scale factor
+    fn scale_factor(screen_height: f32) -> f32 {
+        (screen_height / 1048.0).max(0.5).min(2.0)
+    }
 
     pub fn new(screen_width: f32, screen_height: f32) -> Self {
         let mut controller = Self {
             screen_width,
             screen_height,
-            left_button_world_pos: vec2(0.0, 0.0),
-            right_button_world_pos: vec2(0.0, 0.0),
-            down_button_world_pos: vec2(0.0, 0.0),
-            rotate_button_world_pos: vec2(0.0, 0.0),
             quit_button_world_pos: vec2(0.0, 0.0),
+            quit_button_size: 0.0,
+            red_button_world_pos: vec2(0.0, 0.0),
+            red_button_size: 0.0,
             left_held: false,
             right_held: false,
-            down_held: false,
             rotate_pressed: false,
             quit_pressed: false,
-            active_touch_id: None,
+            red_button_pressed: false,
+            is_touch_capable: false,
+            device_pixel_ratio: 1.0, // Default to 1.0, will be auto-detected
         };
         controller.update_positions();
         controller
     }
 
     fn update_positions(&mut self) {
-        let coords = CoordinateSystem::with_default_offset(self.screen_width, self.screen_height);
+        let _coords = CoordinateSystem::with_default_offset(self.screen_width, self.screen_height);
         let half_height = self.screen_height / 2.0;
-        let half_width = coords.playing_field_width() / 2.0;
+        let scale = Self::scale_factor(self.screen_height);
 
-        // Position buttons further up from bottom (reduce vertical offset)
-        let bottom_offset = Self::DPAD_PADDING * 0.6; // Move up by reducing offset
-
-        // D-pad buttons at bottom left, all in a row
-        let dpad_base_x = -half_width + Self::DPAD_PADDING + 100.0 + Self::DPAD_BUTTON_SIZE / 2.0;
-        let dpad_base_y = half_height - bottom_offset - Self::DPAD_BUTTON_SIZE / 2.0;
-
-        // All three buttons in a row: Left, Right, Down
-        self.left_button_world_pos = vec2(
-            dpad_base_x - Self::DPAD_BUTTON_SIZE - Self::DPAD_BUTTON_SPACING,
-            dpad_base_y,
-        );
-
-        self.right_button_world_pos = vec2(dpad_base_x, dpad_base_y);
-
-        // Down button to the right of right button
-        self.down_button_world_pos = vec2(
-            dpad_base_x + Self::DPAD_BUTTON_SIZE + Self::DPAD_BUTTON_SPACING,
-            dpad_base_y,
-        );
-
-        // Rotate button (circle) at bottom right, further up
-        self.rotate_button_world_pos = vec2(
-            half_width - Self::DPAD_PADDING - Self::ROTATE_BUTTON_RADIUS,
-            half_height - bottom_offset - Self::ROTATE_BUTTON_RADIUS,
-        );
+        self.quit_button_size = Self::BASE_QUIT_BUTTON_SIZE * scale;
+        self.red_button_size = Self::BASE_RED_BUTTON_SIZE * scale;
+        let padding = Self::BASE_PADDING * scale;
 
         // Quit button at top center
         self.quit_button_world_pos = vec2(
             0.0,
-            -half_height + Self::QUIT_BUTTON_SIZE / 2.0 + Self::DPAD_PADDING,
+            -half_height + self.quit_button_size / 2.0 + padding,
         );
+
+        // Red button position will be set based on grid position (updated in update method)
+        // For now, just initialize it
+        self.red_button_world_pos = vec2(0.0, 0.0);
     }
 
-    pub fn update(&mut self, input: &Input, screen_width: f32, screen_height: f32) {
+    pub fn update(&mut self, input: &Input, screen_width: f32, screen_height: f32, piece_world_x: Option<f32>, piece_world_pos: Option<Vec2>, piece_cell_size: Option<f32>, grid_bottom_y: Option<f32>) {
+        // Update touch capability status
+        self.is_touch_capable = input.is_touch_capable();
+        
+        // Get device pixel ratio from main module (set by JavaScript)
+        #[cfg(target_arch = "wasm32")]
+        {
+            use crate::get_device_pixel_ratio;
+            self.device_pixel_ratio = get_device_pixel_ratio();
+        }
+
         if (screen_width - self.screen_width).abs() > 0.1
             || (screen_height - self.screen_height).abs() > 0.1
         {
@@ -100,10 +94,24 @@ impl TetrisMobileController {
             self.screen_height = screen_height;
             self.update_positions();
         }
+        
+        // Update red button position to be under the grid
+        // In world coordinates: negative Y is up, positive Y is down
+        // grid_bottom_y is the bottom edge of the visible grid (positive Y value)
+        // We want the button below the grid, so we add spacing
+        if let Some(grid_bottom) = grid_bottom_y {
+            let scale = Self::scale_factor(self.screen_height);
+            let button_spacing = 20.0 * scale; // Space between grid and button
+            // Button center should be below grid bottom: grid_bottom + spacing + button_half_size
+            self.red_button_world_pos = vec2(0.0, grid_bottom + button_spacing + self.red_button_size / 2.0);
+        }
 
         // Reset button states
         self.rotate_pressed = false;
         self.quit_pressed = false;
+        self.left_held = false;
+        self.right_held = false;
+        self.red_button_pressed = false;
 
         let coords = CoordinateSystem::with_default_offset(self.screen_width, self.screen_height);
 
@@ -111,15 +119,9 @@ impl TetrisMobileController {
         let touch_count = input.touch_count();
         if touch_count > 0 {
             let (tx, ty) = input.primary_touch_position();
-            self.handle_touch(tx, ty, &coords);
-        } else {
-            self.active_touch_id = None;
-            // Reset held states if no touch
-            if self.left_held || self.right_held || self.down_held {
-                self.left_held = false;
-                self.right_held = false;
-                self.down_held = false;
-            }
+            let mouse_held = input.mouse_held(MouseButton::Left);
+            let mouse_pressed = input.mouse_pressed(MouseButton::Left);
+            self.handle_input(tx, ty, mouse_held, mouse_pressed, &coords, piece_world_x, piece_world_pos, piece_cell_size);
         }
 
         // Handle mouse input (for testing on desktop)
@@ -128,97 +130,91 @@ impl TetrisMobileController {
         let mouse_just_pressed = input.mouse_pressed(MouseButton::Left);
 
         if mouse_down || mouse_just_pressed {
-            self.handle_mouse(mx, my, mouse_just_pressed, &coords);
+            self.handle_input(mx, my, mouse_down, mouse_just_pressed, &coords, piece_world_x, piece_world_pos, piece_cell_size);
+        }
+    }
+
+    fn handle_input(
+        &mut self,
+        x: f32,
+        y: f32,
+        held: bool,
+        just_pressed: bool,
+        coords: &CoordinateSystem,
+        piece_world_x: Option<f32>,
+        piece_world_pos: Option<Vec2>,
+        piece_cell_size: Option<f32>,
+    ) {
+        // Apply device pixel ratio to input coordinates for consistent comparison
+        let adjusted_x = x / self.device_pixel_ratio;
+        let adjusted_y = y / self.device_pixel_ratio;
+        
+        // Convert to world coordinates for comparison
+        let touch_world = coords.screen_to_world(vec2(adjusted_x, adjusted_y));
+        
+        let quit_screen = coords.world_to_screen(self.quit_button_world_pos);
+        let quit_button_size = self.quit_button_size;
+        let red_button_screen = coords.world_to_screen(self.red_button_world_pos);
+        let red_button_size = self.red_button_size;
+        
+        // Check quit button first (has priority)
+        if self.is_point_in_square(adjusted_x, adjusted_y, quit_screen, quit_button_size) {
+            if just_pressed {
+                self.quit_pressed = true;
+            }
+            return;
+        }
+        
+        // Check red button (fast drop)
+        if self.is_point_in_square(adjusted_x, adjusted_y, red_button_screen, red_button_size) {
+            // Red button: fast drop (held)
+            if held {
+                self.red_button_pressed = true;
+            }
+            return;
+        }
+        
+        // Check if click is on the piece itself (for rotation)
+        if just_pressed {
+            if let (Some(piece_pos), Some(cell_size)) = (piece_world_pos, piece_cell_size) {
+                // Approximate piece bounds: pieces are typically 2-4 cells wide/tall
+                // Use a generous hitbox (4 cells) to make it easier to tap
+                let piece_hitbox_size = cell_size * 4.0;
+                let piece_screen = coords.world_to_screen(piece_pos);
+                if self.is_point_in_square(adjusted_x, adjusted_y, piece_screen, piece_hitbox_size) {
+                    self.rotate_pressed = true;
+                    return;
+                }
+            }
+        }
+
+        // If piece exists, compare touch position to piece position
+        if let Some(piece_x) = piece_world_x {
+            if touch_world.x < piece_x {
+                // Touch is to the left of piece - move left
+                if held {
+                    self.left_held = true;
+                }
+            } else {
+                // Touch is to the right of piece - move right
+                if held {
+                    self.right_held = true;
+                }
+            }
         } else {
-            // Reset held states if mouse not down
-            if self.left_held || self.right_held || self.down_held {
-                self.left_held = false;
-                self.right_held = false;
-                self.down_held = false;
+            // No piece - use screen center as fallback
+            let screen_center_x = self.screen_width / 2.0;
+            if adjusted_x < screen_center_x {
+                if held {
+                    self.left_held = true;
+                }
+            } else {
+                if held {
+                    self.right_held = true;
+                }
             }
         }
-    }
 
-    fn handle_touch(&mut self, tx: f32, ty: f32, coords: &CoordinateSystem) {
-        let left_screen = coords.world_to_screen(self.left_button_world_pos);
-        let right_screen = coords.world_to_screen(self.right_button_world_pos);
-        let down_screen = coords.world_to_screen(self.down_button_world_pos);
-        let rotate_screen = coords.world_to_screen(self.rotate_button_world_pos);
-        let quit_screen = coords.world_to_screen(self.quit_button_world_pos);
-
-        // Check left button
-        if self.is_point_in_square(tx, ty, left_screen, Self::DPAD_BUTTON_SIZE) {
-            self.left_held = true;
-            return;
-        }
-
-        // Check right button
-        if self.is_point_in_square(tx, ty, right_screen, Self::DPAD_BUTTON_SIZE) {
-            self.right_held = true;
-            return;
-        }
-
-        // Check down button
-        if self.is_point_in_square(tx, ty, down_screen, Self::DPAD_BUTTON_SIZE) {
-            self.down_held = true;
-            return;
-        }
-
-        // Check rotate button (circle)
-        if self.is_point_in_circle(tx, ty, rotate_screen, Self::ROTATE_BUTTON_RADIUS) {
-            if self.active_touch_id.is_none() {
-                self.rotate_pressed = true;
-            }
-            return;
-        }
-
-        // Check quit button
-        if self.is_point_in_square(tx, ty, quit_screen, Self::QUIT_BUTTON_SIZE) {
-            if self.active_touch_id.is_none() {
-                self.quit_pressed = true;
-            }
-        }
-    }
-
-    fn handle_mouse(&mut self, mx: f32, my: f32, just_pressed: bool, coords: &CoordinateSystem) {
-        let left_screen = coords.world_to_screen(self.left_button_world_pos);
-        let right_screen = coords.world_to_screen(self.right_button_world_pos);
-        let down_screen = coords.world_to_screen(self.down_button_world_pos);
-        let rotate_screen = coords.world_to_screen(self.rotate_button_world_pos);
-        let quit_screen = coords.world_to_screen(self.quit_button_world_pos);
-
-        // Check left button
-        if self.is_point_in_square(mx, my, left_screen, Self::DPAD_BUTTON_SIZE) {
-            self.left_held = true;
-            return;
-        }
-
-        // Check right button
-        if self.is_point_in_square(mx, my, right_screen, Self::DPAD_BUTTON_SIZE) {
-            self.right_held = true;
-            return;
-        }
-
-        // Check down button
-        if self.is_point_in_square(mx, my, down_screen, Self::DPAD_BUTTON_SIZE) {
-            self.down_held = true;
-            return;
-        }
-
-        // Check rotate button (circle)
-        if self.is_point_in_circle(mx, my, rotate_screen, Self::ROTATE_BUTTON_RADIUS) {
-            if just_pressed {
-                self.rotate_pressed = true;
-            }
-            return;
-        }
-
-        // Check quit button
-        if self.is_point_in_square(mx, my, quit_screen, Self::QUIT_BUTTON_SIZE) {
-            if just_pressed {
-                self.quit_pressed = true;
-            }
-        }
     }
 
     fn is_point_in_square(&self, px: f32, py: f32, center: Vec2, size: f32) -> bool {
@@ -229,62 +225,20 @@ impl TetrisMobileController {
             && py <= center.y + half
     }
 
-    fn is_point_in_circle(&self, px: f32, py: f32, center: Vec2, radius: f32) -> bool {
-        let dx = px - center.x;
-        let dy = py - center.y;
-        dx * dx + dy * dy <= radius * radius
-    }
-
     pub fn draw(&self, gfx: &mut Graphics) {
         let coords = CoordinateSystem::with_default_offset(self.screen_width, self.screen_height);
 
-        // Draw D-pad buttons (bottom left)
-        self.draw_dpad_button(
-            gfx,
-            &coords,
-            self.left_button_world_pos,
-            "<",
-            self.left_held,
-        );
-        self.draw_dpad_button(
-            gfx,
-            &coords,
-            self.right_button_world_pos,
-            ">",
-            self.right_held,
-        );
-        self.draw_dpad_button(
-            gfx,
-            &coords,
-            self.down_button_world_pos,
-            "v",
-            self.down_held,
-        );
-
-        // Draw rotate button (circle, bottom right)
-        self.draw_circle_button(gfx, &coords, self.rotate_button_world_pos, "O");
-
         // Draw quit button (top center)
         self.draw_quit_button(gfx, &coords, self.quit_button_world_pos);
+        
+        // Draw red button (under grid)
+        self.draw_bottom_button(gfx, &coords, self.red_button_world_pos, Color::new([1.0, 0.2, 0.2, 0.4]), Color::new([1.0, 0.4, 0.4, 0.6]));
     }
 
-    fn draw_dpad_button(
-        &self,
-        gfx: &mut Graphics,
-        coords: &CoordinateSystem,
-        world_pos: Vec2,
-        label: &str,
-        pressed: bool,
-    ) {
-        let size = Self::DPAD_BUTTON_SIZE;
+    fn draw_bottom_button(&self, gfx: &mut Graphics, _coords: &CoordinateSystem, world_pos: Vec2, bg_color: Color, border_color: Color) {
+        let size = self.red_button_size;
         let half_size = size / 2.0;
-
-        // Button background (semi-transparent)
-        let bg_color = if pressed {
-            Color::new([0.3, 0.7, 0.3, 0.8]) // Green when pressed
-        } else {
-            Color::new([0.2, 0.2, 0.2, 0.7]) // Dark gray when not pressed
-        };
+        let border_width = Self::BASE_BUTTON_BORDER_WIDTH * Self::scale_factor(self.screen_height);
 
         // Use world coordinates for rectangles
         gfx.rect()
@@ -292,22 +246,11 @@ impl TetrisMobileController {
             .size(vec2(size, size))
             .color(bg_color);
 
-        // Button border (thicker)
-        let border_color = if pressed {
-            Color::new([0.5, 1.0, 0.5, 1.0])
-        } else {
-            Color::new([0.5, 0.5, 0.5, 1.0])
-        };
-
-        // Draw border as lines (simple approach: draw 4 rectangles)
-        let border_width = Self::BUTTON_BORDER_WIDTH;
-        // Top
+        // Draw border - use world coordinates
         gfx.rect()
             .at(vec2(world_pos.x - half_size, world_pos.y - half_size))
             .size(vec2(size, border_width))
             .color(border_color);
-
-        // Bottom
         gfx.rect()
             .at(vec2(
                 world_pos.x - half_size,
@@ -315,12 +258,10 @@ impl TetrisMobileController {
             ))
             .size(vec2(size, border_width))
             .color(border_color);
-        // Left
         gfx.rect()
             .at(vec2(world_pos.x - half_size, world_pos.y - half_size))
             .size(vec2(border_width, size))
             .color(border_color);
-        // Right
         gfx.rect()
             .at(vec2(
                 world_pos.x + half_size - border_width,
@@ -328,80 +269,12 @@ impl TetrisMobileController {
             ))
             .size(vec2(border_width, size))
             .color(border_color);
-
-        // Label text - convert to screen coordinates for text
-        let screen_pos = coords.world_to_screen(world_pos);
-        let text_size = size * 0.6;
-        gfx.text(label)
-            .at(vec2(screen_pos.x, screen_pos.y))
-            .size(text_size)
-            .color(Color::WHITE);
-    }
-
-    fn draw_circle_button(
-        &self,
-        gfx: &mut Graphics,
-        coords: &CoordinateSystem,
-        world_pos: Vec2,
-        label: &str,
-    ) {
-        let radius = Self::ROTATE_BUTTON_RADIUS;
-
-        // Button background (semi-transparent dark gray)
-        let bg_color = Color::new([0.2, 0.2, 0.2, 0.7]);
-
-        // Draw circle approximation: use a filled rect that covers the circle bounds
-        // Use world coordinates for rectangles
-        let diameter = radius * 2.0;
-        gfx.rect()
-            .at(vec2(world_pos.x - radius, world_pos.y - radius))
-            .size(vec2(diameter, diameter))
-            .color(bg_color);
-
-        // Border (circular approximation - draw as thick square)
-        let border_color = Color::new([0.5, 0.5, 0.5, 1.0]);
-        let border_width = Self::BUTTON_BORDER_WIDTH;
-
-        // Draw border as 4 rectangles (top, bottom, left, right) - use world coordinates
-        // Top
-        gfx.rect()
-            .at(vec2(world_pos.x - radius, world_pos.y - radius))
-            .size(vec2(diameter, border_width))
-            .color(border_color);
-        // Bottom
-        gfx.rect()
-            .at(vec2(
-                world_pos.x - radius,
-                world_pos.y + radius - border_width,
-            ))
-            .size(vec2(diameter, border_width))
-            .color(border_color);
-        // Left
-        gfx.rect()
-            .at(vec2(world_pos.x - radius, world_pos.y - radius))
-            .size(vec2(border_width, diameter))
-            .color(border_color);
-        // Right
-        gfx.rect()
-            .at(vec2(
-                world_pos.x + radius - border_width,
-                world_pos.y - radius,
-            ))
-            .size(vec2(border_width, diameter))
-            .color(border_color);
-
-        // Label text - convert to screen coordinates for text
-        let screen_pos = coords.world_to_screen(world_pos);
-        let text_size = radius * 0.8;
-        gfx.text(label)
-            .at(vec2(screen_pos.x, screen_pos.y))
-            .size(text_size)
-            .color(Color::WHITE);
     }
 
     fn draw_quit_button(&self, gfx: &mut Graphics, coords: &CoordinateSystem, world_pos: Vec2) {
-        let size = Self::QUIT_BUTTON_SIZE;
+        let size = self.quit_button_size;
         let half_size = size / 2.0;
+        let border_width = Self::BASE_BUTTON_BORDER_WIDTH * Self::scale_factor(self.screen_height);
 
         // Button background (semi-transparent red)
         let bg_color = Color::new([0.7, 0.2, 0.2, 0.8]);
@@ -414,7 +287,6 @@ impl TetrisMobileController {
 
         // Button border (thicker)
         let border_color = Color::new([0.9, 0.3, 0.3, 1.0]);
-        let border_width = Self::BUTTON_BORDER_WIDTH;
 
         // Draw border - use world coordinates
         gfx.rect()
@@ -458,10 +330,6 @@ impl TetrisMobileController {
         self.right_held
     }
 
-    pub fn down_held(&self) -> bool {
-        self.down_held
-    }
-
     pub fn rotate_pressed(&self) -> bool {
         self.rotate_pressed
     }
@@ -469,4 +337,9 @@ impl TetrisMobileController {
     pub fn quit_pressed(&self) -> bool {
         self.quit_pressed
     }
+
+    pub fn red_button_pressed(&self) -> bool {
+        self.red_button_pressed
+    }
+
 }

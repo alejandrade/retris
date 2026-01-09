@@ -70,6 +70,14 @@ impl CoordinateSystem {
         )
     }
 
+    /// Convert screen coordinates to world coordinates
+    pub fn screen_to_world(&self, screen_pos: Vec2) -> Vec2 {
+        vec2(
+            screen_pos.x - self.screen_width / 2.0 - self.top_left_offset.x,
+            screen_pos.y - self.screen_height / 2.0 - self.top_left_offset.y,
+        )
+    }
+
     /// Get the world position of the top-left corner of the screen
     pub fn top_left_world(&self) -> Vec2 {
         vec2(

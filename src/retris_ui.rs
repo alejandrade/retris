@@ -14,6 +14,16 @@ pub struct ButtonPosition {
 }
 
 impl ButtonPosition {
+    /// Scale factor based on screen height, clamped to prevent extreme sizes
+    fn scale_factor(screen_height: f32) -> f32 {
+        (screen_height / 1048.0).clamp(0.5, 2.0)
+    }
+    
+    /// Base size for mute button (normalized to 1048px height)
+    const BASE_SIZE: f32 = 50.0;
+    /// Base padding for mute button (normalized to 1048px height)
+    const BASE_PADDING: f32 = 15.0;
+    
     /// Update screen positions based on actual screen dimensions
     pub fn update_screen_pos(&mut self, screen_width: f32, screen_height: f32) {
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
@@ -26,9 +36,11 @@ impl ButtonPosition {
     /// Create position for bottom-right corner (screen size will be set later)
     pub fn for_bottom_right(screen_width: f32, screen_height: f32) -> Self {
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        let size = 50.0;
-        let padding = 15.0;
-        let world_x = coords.playing_field_width() / 2.0 - size - padding;
+        let scale = Self::scale_factor(screen_height);
+        let size = Self::BASE_SIZE * scale;
+        let padding = Self::BASE_PADDING * scale;
+        // Position relative to actual screen width, not playing field width
+        let world_x = screen_width / 2.0 - size - padding;
         let world_y = screen_height / 2.0 - size - padding;
         let world_pos = vec2(world_x, world_y);
         let screen_pos = coords.world_to_screen(world_pos);
@@ -45,10 +57,12 @@ impl ButtonPosition {
     /// Create position for bottom-left corner (screen size will be set later)
     pub fn for_bottom_left(screen_width: f32, screen_height: f32) -> Self {
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        let size = 50.0;
-        let padding = 15.0;
+        let scale = Self::scale_factor(screen_height);
+        let size = Self::BASE_SIZE * scale;
+        let padding = Self::BASE_PADDING * scale;
         // Bottom left: negative world_x, positive world_y
-        let world_x = -coords.playing_field_width() / 2.0 + padding;
+        // Position relative to actual screen width, not playing field width
+        let world_x = -screen_width / 2.0 + padding;
         let world_y = screen_height / 2.0 - size - padding;
         let world_pos = vec2(world_x, world_y);
         let screen_pos = coords.world_to_screen(world_pos);
@@ -116,19 +130,22 @@ impl MuteButton {
         let screen = gfx.screen_size();
         let screen_width = screen.x;
         let screen_height = screen.y;
-        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        let size = 50.0;
-        let padding = 15.0;
+        let scale = ButtonPosition::scale_factor(screen_height);
+        let size = ButtonPosition::BASE_SIZE * scale;
+        let padding = ButtonPosition::BASE_PADDING * scale;
         
-        // Recalculate world position based on which corner (using playing field width)
+        // Recalculate world position based on which corner (using actual screen width)
         if self.is_bottom_right {
-            self.pos.world_x = coords.playing_field_width() / 2.0 - size - padding;
+            // Position relative to actual screen width, not playing field width
+            self.pos.world_x = screen_width / 2.0 - size - padding;
             self.pos.world_y = screen_height / 2.0 - size - padding;
         } else {
             // Bottom-left
-            self.pos.world_x = -coords.playing_field_width() / 2.0 + padding;
+            // Position relative to actual screen width, not playing field width
+            self.pos.world_x = -screen_width / 2.0 + padding;
             self.pos.world_y = screen_height / 2.0 - size - padding;
         }
+        self.pos.size = size;
         // Update screen position based on new world position
         self.pos.update_screen_pos(screen_width, screen_height);
     }
@@ -190,13 +207,25 @@ pub struct VolumeSlider {
 }
 
 impl VolumeSlider {
+    /// Scale factor based on screen height, clamped to prevent extreme sizes
+    fn scale_factor(screen_height: f32) -> f32 {
+        (screen_height / 1048.0).clamp(0.5, 2.0)
+    }
+    
+    /// Base height for slider (normalized to 1048px height)
+    const BASE_HEIGHT: f32 = 30.0;
+    /// Base label Y offset (normalized to 1048px height)
+    const BASE_LABEL_Y_OFFSET: f32 = 25.0;
+    /// Base percentage X offset (normalized to 1048px height)
+    const BASE_PERCENT_X_OFFSET: f32 = 10.0;
+    
     /// Create a new volume slider
     pub fn new(x: f32, y: f32, width: f32, label: &str, initial_value: f32) -> Self {
         Self {
             x,
             y,
             width,
-            height: 30.0,
+            height: Self::BASE_HEIGHT, // Will be scaled in draw/update
             value: initial_value.clamp(0.0, 1.0),
             dragging: false,
             label: label.to_string(),
@@ -204,14 +233,21 @@ impl VolumeSlider {
         }
     }
     
+    /// Set position and size (for aspect-ratio-aware scaling)
+    pub fn set_position(&mut self, x: f32, y: f32, width: f32) {
+        self.x = x;
+        self.y = y;
+        self.width = width;
+    }
+    
     /// Update slider position based on actual screen dimensions
     /// This should be called before handle_input() to update position for hit testing
     /// Note: Slider position (x, y) is in world coordinates and doesn't need updating,
     /// but this method is included for consistency with other UI elements
-    pub fn update(&mut self, _screen_width: f32, _screen_height: f32) {
-        // Position doesn't change - slider position is in world coordinates
-        // But we might want to recalculate screen position for hit testing if needed
-        // For now, slider position (x, y) is set at creation and doesn't need updating
+    pub fn update(&mut self, _screen_width: f32, screen_height: f32) {
+        // Scale height based on screen height
+        let scale = Self::scale_factor(screen_height);
+        self.height = Self::BASE_HEIGHT * scale;
     }
     
     /// Handle mouse input for the slider
@@ -271,10 +307,12 @@ impl VolumeSlider {
     pub fn draw(&self, gfx: &mut Graphics, screen_width: f32, screen_height: f32) {
         // Use coordinate system with actual screen dimensions for text positioning
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
+        let scale = Self::scale_factor(screen_height);
         
         // Draw label above slider
-        let label_size = 20.0;
-        let label_world_pos = vec2(self.x, self.y - 25.0);
+        let label_size = (screen_height * 0.019).max(16.0).min(32.0); // Scaled text size
+        let label_y_offset = Self::BASE_LABEL_Y_OFFSET * scale;
+        let label_world_pos = vec2(self.x, self.y - label_y_offset);
         let label_screen_pos = coords.world_to_screen(label_world_pos);
         gfx.text(&self.label)
             .at(label_screen_pos)
@@ -297,20 +335,25 @@ impl VolumeSlider {
         }
         
         // Draw slider handle
-        let handle_x = self.x + (self.width * self.value) - 5.0;
+        let handle_size = 10.0 * scale;
+        let handle_x = self.x + (self.width * self.value) - handle_size / 2.0;
+        let handle_y_offset = 5.0 * scale;
         gfx.rect()
-            .at(vec2(handle_x, self.y - 5.0))
-            .size(vec2(10.0, self.height + 10.0))
+            .at(vec2(handle_x, self.y - handle_y_offset))
+            .size(vec2(handle_size, self.height + handle_y_offset * 2.0))
             .color(COLOR_TEXT_GREEN);
         
         // Draw percentage text
         let percent = (self.value * 100.0) as i32;
         let percent_text = format!("{}%", percent);
-        let percent_world_pos = vec2(self.x + self.width + 10.0, self.y + 5.0);
+        let percent_size = (screen_height * 0.017).max(14.0).min(28.0); // Scaled text size
+        let percent_x_offset = Self::BASE_PERCENT_X_OFFSET * scale;
+        let percent_y_offset = 5.0 * scale;
+        let percent_world_pos = vec2(self.x + self.width + percent_x_offset, self.y + percent_y_offset);
         let percent_screen_pos = coords.world_to_screen(percent_world_pos);
         gfx.text(&percent_text)
             .at(percent_screen_pos)
-            .size(18.0)
+            .size(percent_size)
             .color(COLOR_DARK_GRAY);
     }
 }
@@ -325,6 +368,14 @@ pub struct Button {
 }
 
 impl Button {
+    /// Scale factor based on screen height, clamped to prevent extreme sizes
+    fn scale_factor(screen_height: f32) -> f32 {
+        (screen_height / 1048.0).clamp(0.5, 2.0)
+    }
+    
+    /// Base border width (normalized to 1048px height)
+    const BASE_BORDER: f32 = 3.0;
+    
     pub fn new(x: f32, y: f32, width: f32, height: f32, label: &str) -> Self {
         Self {
             x,
@@ -333,6 +384,14 @@ impl Button {
             height,
             label: label.to_string(),
         }
+    }
+    
+    /// Set position and size (for aspect-ratio-aware scaling)
+    pub fn set_position(&mut self, x: f32, y: f32, width: f32, height: f32) {
+        self.x = x;
+        self.y = y;
+        self.width = width;
+        self.height = height;
     }
     
     /// Update button position based on actual screen dimensions
@@ -364,6 +423,7 @@ impl Button {
     pub fn draw(&self, gfx: &mut Graphics, screen_width: f32, screen_height: f32) {
         // Use coordinate system with actual screen dimensions for text positioning
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
+        let scale = Self::scale_factor(screen_height);
         
         // Draw button background
         gfx.rect()
@@ -372,7 +432,7 @@ impl Button {
             .color(COLOR_SOFTWARE_GREEN);
         
         // Draw button border
-        let border = 3.0;
+        let border = Self::BASE_BORDER * scale;
         gfx.rect()
             .at(vec2(self.x - border, self.y - border))
             .size(vec2(self.width + border * 2.0, self.height + border * 2.0))
@@ -383,7 +443,9 @@ impl Button {
             .at(vec2(self.x, self.y))
             .size(vec2(self.width, self.height))
             .color(COLOR_SOFTWARE_GREEN);
-        let label_size = 24.0;
+        
+        // Draw label text
+        let label_size = (screen_height * 0.023).max(18.0).min(40.0); // Scaled text size
         let estimated_width = self.label.len() as f32 * label_size * 0.5;
         let label_world_pos = vec2(
             self.x + (self.width - estimated_width) / 2.0,

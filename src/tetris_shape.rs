@@ -558,11 +558,24 @@ impl TetrisShapeNode {
         mobile_controller: &mut TetrisMobileController,
         screen_width: f32,
         screen_height: f32,
+        grid_bottom_y: Option<f32>,
     ) {
         // Update mobile controller
-        mobile_controller.update(input, screen_width, screen_height);
+        // Get piece info for touch following and rotation
+        let piece_world_pos = self.world_position();
+        let piece_world_x = Some(piece_world_pos.x);
+        let piece_cell_size = Some(self.cell_size);
+        mobile_controller.update(
+            input,
+            screen_width,
+            screen_height,
+            piece_world_x,
+            Some(piece_world_pos),
+            piece_cell_size,
+            grid_bottom_y,
+        );
 
-        // Handle rotation with wall kick
+        // Handle rotation with wall kick (keyboard or tap on piece)
         if input.key_pressed(KeyCode::Space) || mobile_controller.rotate_pressed() {
             if self.rotate_clockwise_with_wall_kick(grid) {
                 // Play shuffle sound only if rotation succeeded
@@ -575,12 +588,12 @@ impl TetrisShapeNode {
         const HORIZONTAL_SPEED: f32 = 10.0; // cells per second
 
         if !self.stopped {
-            let moving_left = input.key_held(KeyCode::ArrowLeft)
-                || mobile_controller.left_held()
-                || input.swipe_left();
-            let moving_right = input.key_held(KeyCode::ArrowRight)
-                || mobile_controller.right_held()
-                || input.swipe_right();
+            let moving_left = input.key_pressed(KeyCode::ArrowLeft)
+                || input.key_held(KeyCode::ArrowLeft)
+                || mobile_controller.left_held();
+            let moving_right = input.key_pressed(KeyCode::ArrowRight)
+                || input.key_held(KeyCode::ArrowRight)
+                || mobile_controller.right_held();
 
             // Determine direction: if both are held, don't move (prioritize neither)
             let direction = if moving_left && !moving_right {
@@ -618,7 +631,7 @@ impl TetrisShapeNode {
         if !self.stopped && self.velocity > 0 {
             // Triple speed when holding down arrow
             let effective_velocity =
-                if input.key_held(KeyCode::ArrowDown) || mobile_controller.down_held() {
+                if input.key_held(KeyCode::ArrowDown) || mobile_controller.red_button_pressed() {
                     self.velocity * 5
                 } else {
                     self.velocity

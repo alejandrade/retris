@@ -100,7 +100,9 @@ impl Game {
                 // Update the active piece if it exists and isn't stopped
                 if let Some(ref mut piece) = self.active_piece {
                     if !piece.stopped {
-                        piece.update(input, fixed_delta, &mut self.grid, sound_manager, &mut self.mobile_controller, self.screen_width, self.screen_height);
+                        // Calculate grid bottom Y position for red button placement
+                        let grid_visible_bottom = self.grid.visible_position().y + (self.grid.visible_height_cells() as f32 * self.grid.cell_size());
+                        piece.update(input, fixed_delta, &mut self.grid, sound_manager, &mut self.mobile_controller, self.screen_width, self.screen_height, Some(grid_visible_bottom));
                     }
                 }
 

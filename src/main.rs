@@ -37,12 +37,37 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 static START_MUSIC_FLAG: AtomicBool = AtomicBool::new(false);
 
+/// Device pixel ratio (set by JavaScript, defaults to 1.0)
+#[cfg(target_arch = "wasm32")]
+static DEVICE_PIXEL_RATIO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F800000); // 1.0 as f32 bits
+
 /// JavaScript-callable function to start the music
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn start_music() {
     START_MUSIC_FLAG.store(true, Ordering::Relaxed);
 }
+
+/// JavaScript-callable function to set device pixel ratio
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn set_device_pixel_ratio(ratio: f32) {
+    let bits = ratio.to_bits();
+    DEVICE_PIXEL_RATIO.store(bits, Ordering::Relaxed);
+}
+
+/// Get the device pixel ratio (for use in Rust code)
+#[cfg(target_arch = "wasm32")]
+pub fn get_device_pixel_ratio() -> f32 {
+    let bits = DEVICE_PIXEL_RATIO.load(Ordering::Relaxed);
+    f32::from_bits(bits)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_device_pixel_ratio() -> f32 {
+    1.0 // Default for non-WASM builds
+}
+
 
 /// Helper function to create audio managers
 /// This should only be called after user interaction in WASM
@@ -328,17 +353,7 @@ fn main() {
                     }
 
                     // Update button positions based on screen dimensions
-                    mute_button_small.update(gfx);
                     volume_button.update(gfx);
-
-                    // Handle mute button toggle
-                    if mute_button_small.is_clicked(input) {
-                        mute_button_small.toggle();
-                        let is_muted = mute_button_small.is_muted();
-                        music_manager.set_muted(is_muted);
-                        sound_manager.set_muted(is_muted);
-                        music_manager.start();
-                    }
 
                     // Draw volume control button in bottom left
                     volume_button.draw(gfx);

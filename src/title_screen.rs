@@ -11,6 +11,12 @@ const TARGET_Y: f32 = 0.0; // Screen center is at 0,0
 /// Spacing between letters (in cells)
 const LETTER_SPACING: f32 = 1.0;
 
+const NUM_LETTERS: f32 = 6.0;
+const LETTER_WIDTH_CELLS: f32 = 3.0;
+const PADDING_PERCENT: f32 = 0.15; // 15% padding on each side (total 30% of width)
+const MAX_HEIGHT_PERCENT: f32 = 0.6; // Logo + instructions should take max 60% of height
+
+
 /// Get a color from the piece colors array by index
 fn get_piece_color(index: usize) -> egor::render::Color {
     PIECE_COLORS[index % PIECE_COLORS.len()]
@@ -34,19 +40,26 @@ impl TitleScreen {
 
         let game_data = Storage::load_game_data();
 
-        const NUM_LETTERS: f32 = 6.0;
-        const LETTER_WIDTH_CELLS: f32 = 3.0; // Each letter is 3 cells wide
-        const PADDING: f32 = 80.0; // Leave padding on sides
-
         // Use default screen dimensions for initial calculation (will be updated via update_screen_size)
         let default_width = 640.0;
         let default_height = 1048.0;
         let coords = CoordinateSystem::with_default_offset(default_width, default_height);
         let screen_width = coords.screen_width();
-        let available_width = screen_width - PADDING;
-        let total_cells =
-            (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
-        let cell_size = available_width / total_cells;
+        
+        // Calculate cell_size based on both width and height constraints
+        let total_cells = (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
+        
+        // 1. Calculate based on width constraint (percentage-based padding)
+        let padding_width = screen_width * PADDING_PERCENT;
+        let cell_size_by_width = (screen_width - padding_width) / total_cells;
+        
+        // 2. Calculate based on height constraint (ensure logo fits vertically)
+        // Letters are roughly LETTER_WIDTH_CELLS tall, plus some space for instructions
+        let max_allowed_height = default_height * MAX_HEIGHT_PERCENT;
+        let cell_size_by_height = max_allowed_height / (LETTER_WIDTH_CELLS * 2.0);
+        
+        // 3. Use the smaller of the two to ensure it fits everywhere
+        let cell_size = cell_size_by_width.min(cell_size_by_height);
 
         let letter_width = LETTER_WIDTH_CELLS * cell_size;
         let letter_spacing = LETTER_SPACING * cell_size;
@@ -124,55 +137,40 @@ impl TitleScreen {
 
     /// Update title screen positions based on actual screen dimensions
     pub fn update_screen_size(&mut self, screen_width: f32, screen_height: f32) {
-        const NUM_LETTERS: f32 = 6.0;
-        const LETTER_WIDTH_CELLS: f32 = 3.0;
-        const PADDING: f32 = 80.0;
-
-        // Use coordinate system with actual screen dimensions
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
-        // Use playing field width (based on aspect ratio) for letter sizing
-        let playing_field_width = coords.playing_field_width();
-        let available_width = playing_field_width - PADDING;
-        let total_cells =
-            (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
-        let cell_size = available_width / total_cells;
+        
+        // Calculate cell_size based on both width and height constraints
+        let total_cells = (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
+        
+        // 1. Calculate based on width constraint (percentage-based padding)
+        let padding_width = screen_width * PADDING_PERCENT;
+        let cell_size_by_width = (screen_width - padding_width) / total_cells;
+        
+        // 2. Calculate based on height constraint (ensure logo fits vertically)
+        // Letters are roughly LETTER_WIDTH_CELLS tall, plus some space for instructions
+        let max_allowed_height = screen_height * MAX_HEIGHT_PERCENT;
+        let cell_size_by_height = max_allowed_height / (LETTER_WIDTH_CELLS * 2.0);
+        
+        // 3. Use the smaller of the two to ensure it fits everywhere
+        let cell_size = cell_size_by_width.min(cell_size_by_height);
 
         let letter_width = LETTER_WIDTH_CELLS * cell_size;
         let letter_spacing = LETTER_SPACING * cell_size;
         let num_letters = self.letters.len() as f32;
         let total_width = (num_letters * letter_width) + ((num_letters - 1.0) * letter_spacing);
-
-        // Center letters in the screen using coordinate system's center (0,0)
-        // start_x is the center X position of the first letter
         let start_x = coords.center_x() - total_width / 2.0 + letter_width / 2.0;
         let start_y = TARGET_Y;
-
-        // Calculate grid position using coordinate system's left edge
-        // Grid position should be set relative to the playing field (respecting aspect ratio)
-        // We want the grid to start from a known position relative to the screen edges
         let grid_width_cells = 200;
         let grid_height_cells = 100;
 
-        // Set grid_position so that letters can be positioned correctly
-        // The grid_position is the world position of grid cell (0,0)
-        // We want the first letter's left edge to align with (start_x - letter_width/2.0)
-        // But we also need some offset for the grid system
-        // Let's use the left edge of the playing field as a reference point
         let left_edge = coords.left_edge_x();
-        // Position grid so that when we calculate cell positions, letters center correctly
-        // Offset grid to the left to give room for positioning
+
         let grid_position_x = left_edge - (50.0 * cell_size);
         let grid_position = vec2(grid_position_x, start_y);
 
         // Update each letter's position
         let mut current_x_world = start_x;
         for letter in self.letters.iter_mut() {
-            // Calculate cell_x such that the letter's left edge aligns correctly
-            // world_position() returns top-left of cell at (cell_x, cell_y)
-            // We want the letter's center at current_x_world
-            // Letter center = (grid_position.x + cell_x * cell_size) + letter_width/2.0
-            // So: current_x_world = (grid_position.x + cell_x * cell_size) + letter_width/2.0
-            // cell_x = (current_x_world - letter_width/2.0 - grid_position.x) / cell_size
             let cell_x =
                 ((current_x_world - letter_width / 2.0 - grid_position.x) / cell_size) as i32;
             let cell_y = -2;
@@ -324,7 +322,7 @@ impl TitleScreen {
         let instructions_y = TARGET_Y + 150.0;
 
         // Calculate text size based on screen height (roughly 2.5% of screen height)
-        let text_size = (screen_height * 0.018).max(14.0).min(24.0);
+        let text_size = (screen_height * 0.018).max(25.0).min(54.0);
 
         let instructions = [
             "Arrow Left/Right: Move",

@@ -36,9 +36,15 @@ impl Grid {
         visible_height_cells: usize,
         min_padding: f32,
     ) -> Self {
-        // Step 1: Calculate available space for the grid (screen minus padding on all sides)
-        let available_width_pixels = screen_width - (min_padding * 2.0);
-        let available_height_pixels = screen_height - (min_padding * 2.0);
+        // Step 1: Calculate padding as percentage of screen dimensions (use the smaller dimension for consistency)
+        // Use percentage-based padding similar to title screen, but also respect minimum padding
+        const PADDING_PERCENT: f32 = 0.05; // 5% padding on each side (total 10% of width/height)
+        let padding_width = (screen_width * PADDING_PERCENT).max(min_padding);
+        let padding_height = (screen_height * PADDING_PERCENT).max(min_padding);
+        
+        // Calculate available space for the grid (screen minus padding on all sides)
+        let available_width_pixels = screen_width - (padding_width * 2.0);
+        let available_height_pixels = screen_height - (padding_height * 2.0);
 
         // Step 2: Calculate cell size - must fit both width and height constraints
         // Use the smaller value to ensure the grid fits in both dimensions
@@ -96,6 +102,14 @@ impl Grid {
 
     pub fn height_cells(&self) -> usize {
         self.height
+    }
+
+    pub fn visible_height_cells(&self) -> usize {
+        self.visible_height
+    }
+
+    pub fn visible_position(&self) -> Vec2 {
+        self.visible_position
     }
 
     pub fn is_cell_occupied(&self, cell_x: i32, cell_y: i32) -> bool {

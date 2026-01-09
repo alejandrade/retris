@@ -17,23 +17,55 @@ pub struct VolumeControlScreen {
 }
 
 impl VolumeControlScreen {
+    /// Scale factor based on screen height, clamped to prevent extreme sizes
+    fn scale_factor(screen_height: f32) -> f32 {
+        (screen_height / 1048.0).clamp(0.5, 2.0)
+    }
+    
+    /// Base slider width (normalized to 1048px height)
+    const BASE_SLIDER_WIDTH: f32 = 300.0;
+    /// Base slider X position (normalized to 1048px height)
+    const BASE_SLIDER_X: f32 = -150.0;
+    /// Base music slider Y position (normalized to 1048px height)
+    const BASE_MUSIC_SLIDER_Y: f32 = -50.0;
+    /// Base SFX slider Y position (normalized to 1048px height)
+    const BASE_SFX_SLIDER_Y: f32 = 50.0;
+    /// Base button width (normalized to 1048px height)
+    const BASE_BUTTON_WIDTH: f32 = 150.0;
+    /// Base button height (normalized to 1048px height)
+    const BASE_BUTTON_HEIGHT: f32 = 50.0;
+    /// Base button X position (normalized to 1048px height)
+    const BASE_BUTTON_X: f32 = -75.0;
+    /// Base button Y position (normalized to 1048px height)
+    const BASE_BUTTON_Y: f32 = 150.0;
+    
     pub fn new(volume_manager: &VolumeManager) -> Self {
+        // Use default screen dimensions for initial calculation (will be updated via update)
+        let default_height = 1048.0;
+        let scale = Self::scale_factor(default_height);
+        
         Self {
             music_slider: VolumeSlider::new(
-                -150.0,
-                -50.0,
-                300.0,
+                Self::BASE_SLIDER_X * scale,
+                Self::BASE_MUSIC_SLIDER_Y * scale,
+                Self::BASE_SLIDER_WIDTH * scale,
                 "Music Volume",
                 volume_manager.music_volume(),
             ),
             sfx_slider: VolumeSlider::new(
-                -150.0,
-                50.0,
-                300.0,
+                Self::BASE_SLIDER_X * scale,
+                Self::BASE_SFX_SLIDER_Y * scale,
+                Self::BASE_SLIDER_WIDTH * scale,
                 "Sound Effects Volume",
                 volume_manager.sfx_volume(),
             ),
-            close_button: Button::new(-75.0, 150.0, 150.0, 50.0, "Close"),
+            close_button: Button::new(
+                Self::BASE_BUTTON_X * scale,
+                Self::BASE_BUTTON_Y * scale,
+                Self::BASE_BUTTON_WIDTH * scale,
+                Self::BASE_BUTTON_HEIGHT * scale,
+                "Close",
+            ),
             test_sound_timer: 0.0,
         }
     }
@@ -59,7 +91,28 @@ impl VolumeControlScreen {
             self.test_sound_timer = 0.0;
         }
 
-        // Update slider positions based on actual screen dimensions
+        // Update slider and button positions based on actual screen dimensions
+        let scale = Self::scale_factor(screen_height);
+        
+        // Recalculate slider and button positions for aspect-ratio-aware scaling
+        self.music_slider.set_position(
+            Self::BASE_SLIDER_X * scale,
+            Self::BASE_MUSIC_SLIDER_Y * scale,
+            Self::BASE_SLIDER_WIDTH * scale,
+        );
+        self.sfx_slider.set_position(
+            Self::BASE_SLIDER_X * scale,
+            Self::BASE_SFX_SLIDER_Y * scale,
+            Self::BASE_SLIDER_WIDTH * scale,
+        );
+        self.close_button.set_position(
+            Self::BASE_BUTTON_X * scale,
+            Self::BASE_BUTTON_Y * scale,
+            Self::BASE_BUTTON_WIDTH * scale,
+            Self::BASE_BUTTON_HEIGHT * scale,
+        );
+        
+        // Update slider and button internal state
         self.music_slider.update(screen_width, screen_height);
         self.sfx_slider.update(screen_width, screen_height);
         self.close_button.update(screen_width, screen_height);
@@ -102,6 +155,7 @@ impl VolumeControlScreen {
     pub fn draw(&self, gfx: &mut Graphics, screen_width: f32, screen_height: f32) {
         // Use coordinate system with actual screen dimensions
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
+        let scale = Self::scale_factor(screen_height);
 
         // Draw semi-transparent background overlay
         // Since (0,0) is center, we need to position from top-left corner
@@ -112,8 +166,10 @@ impl VolumeControlScreen {
             .size(overlay_size)
             .color(COLOR_DARK_GRAY);
 
-        // Draw title
-        self.draw_centered_text(gfx, "VOLUME CONTROL", -200.0, 48.0, COLOR_TEXT_GREEN, screen_width, screen_height);
+        // Draw title - scaled position and size
+        let title_y = -200.0 * scale;
+        let title_size = (screen_height * 0.046).max(32.0).min(80.0); // Scaled text size
+        self.draw_centered_text(gfx, "VOLUME CONTROL", title_y, title_size, COLOR_TEXT_GREEN, screen_width, screen_height);
 
         // Draw sliders
         self.music_slider.draw(gfx, screen_width, screen_height);
