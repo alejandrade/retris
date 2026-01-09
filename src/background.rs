@@ -26,24 +26,24 @@ impl Background {
     fn scale_factor(screen_height: f32) -> f32 {
         (screen_height / 1048.0).clamp(0.5, 2.0)
     }
-    
+
     /// Base star size range (normalized to 1048px height)
     const BASE_STAR_SIZE_MIN: f32 = 1.0;
     const BASE_STAR_SIZE_MAX: f32 = 4.0;
     /// Base star velocity range (normalized to 1048px height)
     const BASE_STAR_VELOCITY_MIN: f32 = -10.0;
     const BASE_STAR_VELOCITY_MAX: f32 = 10.0;
-    
+
     /// Calculate how many stars are needed based on screen area
     /// Uses a density-based approach that scales better with screen size
     fn calculate_star_count(screen_width: f32, screen_height: f32) -> usize {
         const STARS_PER_2500_PIXELS: f32 = 1.0;
-        
+
         let screen_area = screen_width * screen_height;
         let star_count = (screen_area / 2500.0 * STARS_PER_2500_PIXELS).ceil() as usize;
 
         // Clamp to reasonable bounds: minimum 30, maximum 1500
-        let clamped = star_count.clamp(30, 1500);
+        let clamped = star_count.clamp(30, 400);
 
         // Debug output to see what's happening
         #[cfg(debug_assertions)]
@@ -53,7 +53,7 @@ impl Background {
                 screen_width, screen_height, screen_area, star_count, clamped
             );
         }
-        
+
         clamped
     }
 
@@ -62,10 +62,10 @@ impl Background {
         let mut rng = rand::rng();
         let color_type = rng.random_range(0..3);
         match color_type {
-            0 => [1.0, 1.0, 0.0],           // Yellow
-            1 => [0.6, 0.9, 1.0],           // Light blue
-            2 => [1.0, 0.3, 0.3],           // Red
-            _ => [1.0, 1.0, 1.0],           // Fallback to white (shouldn't happen)
+            0 => [1.0, 1.0, 0.0], // Yellow
+            1 => [0.6, 0.9, 1.0], // Light blue
+            2 => [1.0, 0.3, 0.3], // Red
+            _ => [1.0, 1.0, 1.0], // Fallback to white (shouldn't happen)
         }
     }
 
@@ -79,9 +79,14 @@ impl Background {
         Star {
             x: rng.random_range(-half_width..half_width),
             y: rng.random_range(-half_height..half_height),
-            size: rng.random_range(Self::BASE_STAR_SIZE_MIN * scale..Self::BASE_STAR_SIZE_MAX * scale),
-            velocity_x: rng.random_range(Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale),
-            velocity_y: rng.random_range(Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale),
+            size: rng
+                .random_range(Self::BASE_STAR_SIZE_MIN * scale..Self::BASE_STAR_SIZE_MAX * scale),
+            velocity_x: rng.random_range(
+                Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale,
+            ),
+            velocity_y: rng.random_range(
+                Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale,
+            ),
             twinkle_offset: rng.random_range(0.0..(std::f32::consts::TAU)),
             twinkle_speed: rng.random_range(0.5..2.0),
             color_rgb: Self::random_star_color(),
@@ -103,9 +108,15 @@ impl Background {
             stars.push(Star {
                 x: rng.random_range(-half_width..half_width),
                 y: rng.random_range(-half_height..half_height),
-                size: rng.random_range(Self::BASE_STAR_SIZE_MIN * scale..Self::BASE_STAR_SIZE_MAX * scale),
-                velocity_x: rng.random_range(Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale), // Gentle drift speed
-                velocity_y: rng.random_range(Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale),
+                size: rng.random_range(
+                    Self::BASE_STAR_SIZE_MIN * scale..Self::BASE_STAR_SIZE_MAX * scale,
+                ),
+                velocity_x: rng.random_range(
+                    Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale,
+                ), // Gentle drift speed
+                velocity_y: rng.random_range(
+                    Self::BASE_STAR_VELOCITY_MIN * scale..Self::BASE_STAR_VELOCITY_MAX * scale,
+                ),
                 twinkle_offset: rng.random_range(0.0..(std::f32::consts::TAU)),
                 twinkle_speed: rng.random_range(0.5..2.0),
                 color_rgb: Self::random_star_color(),
@@ -210,7 +221,12 @@ impl Background {
             gfx.rect()
                 .at(vec2(star.x, star.y))
                 .size(vec2(star.size, star.size))
-                .color(Color::new([star.color_rgb[0], star.color_rgb[1], star.color_rgb[2], twinkle]));
+                .color(Color::new([
+                    star.color_rgb[0],
+                    star.color_rgb[1],
+                    star.color_rgb[2],
+                    twinkle,
+                ]));
         }
     }
 }
