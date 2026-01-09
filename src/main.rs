@@ -5,6 +5,7 @@ mod game_data;
 mod game_over_screen;
 mod game_ui;
 mod grid;
+mod logger;
 mod music_manager;
 mod retris_colors;
 mod retris_ui;
@@ -17,21 +18,19 @@ mod volume_manager;
 
 use background::Background;
 use egor::app::*;
-use egor::input::KeyCode;
+use egor::input::{KeyCode, MouseButton};
 use game::Game;
 use game_over_screen::{GameOverAction, GameOverScreen};
 use music_manager::MusicManager;
 use retris_ui::MuteButton;
 use sound_manager::SoundManager;
+#[cfg(target_arch = "wasm32")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use title_screen::TitleScreen;
 use volume_control_screen::VolumeControlScreen;
 use volume_manager::VolumeManager;
-
-#[cfg(target_arch = "wasm32")]
-use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
 // Screen size is now dynamic and obtained from gfx.screen_size() at runtime
 
 // Boolean flag that JavaScript can set to request music start
