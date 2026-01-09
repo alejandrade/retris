@@ -7,12 +7,6 @@ use kira::{
     },
 };
 use std::io::Cursor;
-use std::sync::{Arc, Mutex};
-
-#[derive(Clone)]
-pub enum LoadingState {
-    Complete,
-}
 
 pub struct MusicManager {
     audio_manager: AudioManager<DefaultBackend>,
@@ -24,7 +18,6 @@ pub struct MusicManager {
     current_decoded_song: Option<StaticSoundData>,
     current_index: usize,
     current_handle: Option<StaticSoundHandle>,
-    loading_state: Arc<Mutex<LoadingState>>,
     muted: bool,
     volume_manager: VolumeManager,
     // Game over sound - decode on demand
@@ -105,7 +98,6 @@ impl MusicManager {
             current_decoded_song: None,
             current_index: 0,
             current_handle: None,
-            loading_state: Arc::new(Mutex::new(LoadingState::Complete)),
             muted: false,
             volume_manager,
             game_over_bytes,
@@ -154,7 +146,6 @@ impl MusicManager {
         let bytes_vec = bytes.to_vec();
         Ok(StaticSoundData::from_cursor(Cursor::new(bytes_vec))?)
     }
-
 
     // --- Playback Logic ---
 
