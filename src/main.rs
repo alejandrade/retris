@@ -1,5 +1,6 @@
 mod background;
 mod coordinate_system;
+mod debug;
 mod game;
 mod game_data;
 mod game_over_screen;
@@ -17,6 +18,7 @@ mod volume_control_screen;
 mod volume_manager;
 
 use background::Background;
+use debug::DebugOverlay;
 use egor::app::*;
 use egor::input::{KeyCode, MouseButton};
 use game::Game;
@@ -221,6 +223,10 @@ fn main() {
 
     // Create game over screen
     let mut game_over_screen = GameOverScreen::new();
+    
+    // Create debug overlay
+    let mut debug_overlay = DebugOverlay::new();
+    
     #[cfg(not(target_arch = "wasm32"))]
     {
         if state == GameState::Title {
@@ -287,6 +293,9 @@ fn main() {
             background.update_screen_size(screen.x, screen.y);
             background.update(timer.delta);
             background.draw(gfx);
+            
+            // Update debug overlay
+            debug_overlay.update(input, timer.delta, screen.x, screen.y);
 
             match state {
                 GameState::Title => {
@@ -482,5 +491,9 @@ fn main() {
                     }
                 }
             }
+            
+            // Draw debug overlay (on top of everything)
+            let screen = gfx.screen_size();
+            debug_overlay.draw(gfx, screen.x, screen.y);
         })
 }
