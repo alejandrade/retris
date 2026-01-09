@@ -53,27 +53,76 @@
         }
 
         body {
-            background: #000;
+            background: rgb(13, 13, 20); /* COLOR_BACKGROUND: [0.05, 0.05, 0.08, 1.0] */
+            margin: 0;
+            padding: 0;
         }
 
         canvas {
-            width: 100vw;
-            height: 100vh;
             display: block;
+            position: fixed;
+        }
+
+        /* Portrait (vertical): Full screen - desktop style */
+        @media (orientation: portrait) {
+            canvas {
+                width: 100vw;
+                height: 100vh;
+                top: 0;
+                left: 0;
+            }
+        }
+
+        /* Landscape (horizontal): iPhone 5 aspect ratio: 640x1136 = ~0.563, centered - mobile style */
+        @media (orientation: landscape) {
+            body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            canvas {
+                aspect-ratio: 640 / 1136;
+                /* Will be set by JavaScript to fill by width or height */
+                /* Center horizontally and vertically */
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                object-fit: contain;
+            }
+        }
+
+        /* Rotate message for mobile devices in landscape */
+        #rotate-message {
             position: fixed;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(13, 13, 20, 0.95); /* COLOR_BACKGROUND with high opacity */
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 2rem;
         }
 
-        /* Mobile: Force iPhone 5 (Flappy Bird era) aspect ratio: 640x1136 = ~0.563 */
-        @media (max-width: 768px) {
-            canvas {
-                aspect-ratio: 640 / 1136;
-                width: 100vw;
-                height: auto;
-                max-height: 100vh;
-                object-fit: contain;
-            }
+        #rotate-message.show {
+            display: flex;
+        }
+
+        #rotate-message h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        #rotate-message p {
+            font-size: 1.2rem;
+            opacity: 0.8;
         }
 
         #start-overlay {
@@ -116,6 +165,12 @@
     </style>
 </head>
 <body>
+<div id="rotate-message">
+    <div>
+        <h1>📱 Please Rotate Your Device</h1>
+        <p>Hold your phone vertically to play</p>
+    </div>
+</div>
 <div id="start-overlay">
     <div id="start-overlay-content">
         <h1>RETRIS</h1>
@@ -223,47 +278,78 @@
         }
     });
 
-    // Force iPhone 5 aspect ratio on mobile (640x1136 = Flappy Bird era)
-    function setupMobileAspectRatio() {
+    // Setup canvas size based on orientation
+    // Portrait (vertical): Full screen - desktop style
+    // Landscape (horizontal): iPhone 5 aspect ratio, centered - mobile style
+    function setupCanvasSize() {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (!isMobile) return;
-
         const iPhone5AspectRatio = 640 / 1136; // ~0.563
+        const rotateMessage = document.getElementById('rotate-message');
+        
         const updateCanvasSize = () => {
             const canvas = document.querySelector('canvas');
             if (!canvas) return;
 
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
+            const isPortrait = viewportHeight > viewportWidth;
             
-            // Calculate canvas size maintaining iPhone 5 aspect ratio
-            let canvasWidth, canvasHeight;
-            
-            if (viewportWidth / viewportHeight > iPhone5AspectRatio) {
-                // Viewport is wider than iPhone 5 ratio - constrain by height
-                canvasHeight = viewportHeight;
-                canvasWidth = canvasHeight * iPhone5AspectRatio;
-            } else {
-                // Viewport is taller than iPhone 5 ratio - constrain by width
-                canvasWidth = viewportWidth;
-                canvasHeight = canvasWidth / iPhone5AspectRatio;
+            // Show rotate message if mobile device in landscape
+            if (isMobile && !isPortrait && rotateMessage) {
+                rotateMessage.classList.add('show');
+            } else if (rotateMessage) {
+                rotateMessage.classList.remove('show');
             }
+            
+            if (isPortrait) {
+                // Portrait (vertical): Full screen - desktop style
+                canvas.style.width = viewportWidth + 'px';
+                canvas.style.height = viewportHeight + 'px';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.transform = 'none';
+            } else {
+                // Landscape (horizontal): maintain iPhone 5 aspect ratio, fill screen (by width or height), and center
+                let canvasWidth, canvasHeight;
+                
+                // Calculate dimensions if we fill by width
+                const widthFillHeight = viewportWidth / iPhone5AspectRatio;
+                // Calculate dimensions if we fill by height
+                const heightFillWidth = viewportHeight * iPhone5AspectRatio;
+                
+                // Use whichever doesn't overflow - fill by width or height
+                if (widthFillHeight <= viewportHeight) {
+                    // Fill by width (height fits within viewport)
+                    canvasWidth = viewportWidth;
+                    canvasHeight = widthFillHeight;
+                } else {
+                    // Fill by height (width fits within viewport)
+                    canvasWidth = heightFillWidth;
+                    canvasHeight = viewportHeight;
+                }
 
-            // Set canvas size (WASM will handle the actual rendering)
-            canvas.style.width = canvasWidth + 'px';
-            canvas.style.height = canvasHeight + 'px';
+                // Set canvas size (WASM will handle the actual rendering)
+                canvas.style.width = canvasWidth + 'px';
+                canvas.style.height = canvasHeight + 'px';
+                
+                // Center the canvas
+                canvas.style.top = '50%';
+                canvas.style.left = '50%';
+                canvas.style.transform = 'translate(-50%, -50%)';
+            }
         };
 
-        // Update on load and resize
+        // Update on load and resize/orientation change
         window.addEventListener('load', updateCanvasSize);
         window.addEventListener('resize', updateCanvasSize);
+        window.addEventListener('orientationchange', updateCanvasSize);
         updateCanvasSize();
     }
 
     // Start looking for the function as soon as page loads
     window.addEventListener('load', function () {
-        // Setup mobile aspect ratio
-        setupMobileAspectRatio();
+        // Setup canvas size (mobile: centered with aspect ratio, desktop: fullscreen)
+        setupCanvasSize();
 
         // Wait a bit longer for Trunk to fully initialize
         setTimeout(() => {
