@@ -2,38 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Retris - A Tetris Game Built with Rust</title>
     <style>
+        /* 1. Reset everything to fill the screen exactly */
         body, html {
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
+            width: 100svw;
+            height: 100svh;
             overflow: hidden;
             background-color: #0d0d14;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            /* No Flexbox centering here! We want the canvas at 0,0 */
         }
 
         canvas {
-    display: block;
-    image-rendering: pixelated;
-    
-    /* ADD THESE THREE LINES */
-    touch-action: none;          /* Stops the iPhone from scrolling/zooming */
-    user-select: none;           /* Stops the "copy/paste" loupe from appearing */
-    -webkit-user-select: none;
-    outline: none;               /* Removes the focus ring */
-}
+            display: block;
+            /* 2. Force the canvas to be the size of the window */
+            width: 100% !important;
+            height: 100% !important;
+
+            image-rendering: pixelated;
+
+            /* 3. Prevent mobile browser interference */
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            outline: none;
+        }
 
         #start-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            inset: 0;
             background: rgba(0, 0, 0, 0.9);
             z-index: 1000;
             display: flex;
@@ -61,11 +62,10 @@
 <script>
     const overlay = document.getElementById('start-overlay');
     let startMusicFn = null;
-    let retryCount = 0;
-    const MAX_RETRIES = 50;
 
     /**
-     * DPI & RESIZING LOGIC
+     * CLEAN DPI SYNC
+     * We only care about the internal buffer size matching the screen resolution.
      */
     function syncDPIAndResize() {
         const canvas = document.querySelector('canvas');
@@ -73,69 +73,19 @@
 
         const dpr = window.devicePixelRatio || 1.0;
 
-        // 1. Send DPR to WASM if binding is ready
-        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
-            window.wasmBindings.set_device_pixel_ratio(dpr);
-        }
+        // Use innerWidth/Height because the CSS makes the canvas fill the window
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
 
-        // 2. Calculate Visual (CSS) Size based on Aspect Ratio
-        const TARGET_RATIO = 10 / 20; // Classic Tetris
-        let visualWidth = window.innerWidth;
-        let visualHeight = window.innerHeight;
-
-        if (visualWidth / visualHeight > TARGET_RATIO) {
-            visualWidth = visualHeight * TARGET_RATIO;
-        } else {
-            visualHeight = visualWidth / TARGET_RATIO;
-        }
-
-        // 3. Set Internal Buffer Size (Physical Pixels)
-        // This is the "Magic Equation" for high-DPI
-        canvas.width = Math.floor(visualWidth * dpr);
-        canvas.height = Math.floor(visualHeight * dpr);
-
-        // 4. Set Visual Size (CSS Pixels)
-        canvas.style.width = `${visualWidth}px`;
-        canvas.style.height = `${visualHeight}px`;
-
-        console.log(`DPI Sync: ${dpr}x | Buffer: ${canvas.width}x${canvas.height}`);
+        console.log(`Canvas Buffer Resized: ${canvas.width}x${canvas.height} at ${dpr}x DPI`);
     }
 
-    // Listen for window resize OR DPI change (moving between monitors)
     window.addEventListener('resize', syncDPIAndResize);
-    window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
-        .addEventListener('change', syncDPIAndResize, {once: true});
 
-    /**
-     * WASM INITIALIZATION
-     */
-    function initializeWasmHooks() {
-        if (window.wasmBindings && window.wasmBindings.set_device_pixel_ratio) {
-            syncDPIAndResize();
-            findAndCacheMusic();
-        } else if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            setTimeout(initializeWasmHooks, 100);
-        }
-    }
-
-    function findAndCacheMusic() {
-        if (window.wasmBindings?.start_music) {
-            startMusicFn = window.wasmBindings.start_music;
-        }
-    }
-
-    /**
-     * INTERACTION HANDLERS
-     */
     overlay.addEventListener('click', () => {
         overlay.classList.add('hidden');
+        if (window.wasmBindings?.start_music) window.wasmBindings.start_music();
 
-        // Ensure we have the latest music function
-        findAndCacheMusic();
-        if (startMusicFn) startMusicFn();
-
-        // Focus the canvas for keyboard input
         const canvas = document.querySelector('canvas');
         if (canvas) {
             canvas.setAttribute('tabindex', '0');
@@ -143,17 +93,13 @@
         }
     });
 
-    // Start polling on load
-    window.addEventListener('load', initializeWasmHooks);
-
-    // Initial canvas detection loop
+    // Initial detection
     const detectionInterval = setInterval(() => {
         if (document.querySelector('canvas')) {
             syncDPIAndResize();
             clearInterval(detectionInterval);
         }
     }, 100);
-
 </script>
 </body>
 </html>

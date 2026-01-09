@@ -39,7 +39,8 @@ static START_MUSIC_FLAG: AtomicBool = AtomicBool::new(false);
 
 /// Device pixel ratio (set by JavaScript, defaults to 1.0)
 #[cfg(target_arch = "wasm32")]
-static DEVICE_PIXEL_RATIO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F800000); // 1.0 as f32 bits
+static DEVICE_PIXEL_RATIO: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0x3F800000); // 1.0 as f32 bits
 
 /// JavaScript-callable function to start the music
 #[cfg(target_arch = "wasm32")]
@@ -67,7 +68,6 @@ pub fn get_device_pixel_ratio() -> f32 {
 pub fn get_device_pixel_ratio() -> f32 {
     1.0 // Default for non-WASM builds
 }
-
 
 /// Helper function to create audio managers
 /// This should only be called after user interaction in WASM
@@ -230,7 +230,6 @@ fn main() {
 
     App::new()
         .title("Retris")
-        .maximized(true)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
