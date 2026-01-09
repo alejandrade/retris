@@ -2,6 +2,8 @@ use egor::math::{Vec2, vec2};
 
 /// Get the device pixel ratio (for use in Rust code)
 /// This is a thin wrapper around the main module's function
+
+#[allow(dead_code)]
 #[cfg(target_arch = "wasm32")]
 pub fn get_device_pixel_ratio() -> f32 {
     crate::get_device_pixel_ratio()
