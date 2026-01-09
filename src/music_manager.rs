@@ -1,3 +1,4 @@
+use crate::background_task::BackgroundTask;
 use crate::volume_manager::VolumeManager;
 use kira::{
     AudioManager, AudioManagerSettings, DefaultBackend, Tween,
@@ -7,6 +8,13 @@ use kira::{
     },
 };
 use std::io::Cursor;
+
+#[derive(Clone, Copy, PartialEq)]
+enum LoadingTask {
+    PlaylistSong(usize),
+    GameOverSong,
+    TestSound,
+}
 
 pub struct MusicManager {
     audio_manager: AudioManager<DefaultBackend>,
@@ -26,6 +34,13 @@ pub struct MusicManager {
     game_over_handle: Option<StaticSoundHandle>,
     // New flag to control if the playlist is allowed to advance
     playlist_active: bool,
+    // Background task for loading audio files
+    loading_task: BackgroundTask<LoadingTask, Result<StaticSoundData, String>>,
+    pending_song_index: Option<usize>, // Track which song is being loaded
+    pending_game_over: bool, // Track if game over song is being loaded
+    // Test sound for volume control - kept in memory while volume control is open
+    test_song_decoded: Option<StaticSoundData>,
+    test_song_handle: Option<StaticSoundHandle>,
 }
 
 impl MusicManager {
@@ -104,6 +119,11 @@ impl MusicManager {
             game_over_decoded: None,
             game_over_handle: None,
             playlist_active: false,
+            loading_task: BackgroundTask::new(),
+            pending_song_index: None,
+            pending_game_over: false,
+            test_song_decoded: None,
+            test_song_handle: None,
         })
     }
 
@@ -161,6 +181,75 @@ impl MusicManager {
     }
 
     pub fn update(&mut self) {
+        // Check for completed background loading tasks first
+        while let Some((task_id, outer_result)) = self.loading_task.try_recv() {
+            // BackgroundTask wraps in Result for panic handling, but our work function also returns Result
+            // So we need to flatten: Result<Result<StaticSoundData, String>, String>
+            let result = match outer_result {
+                Ok(inner_result) => inner_result, // Inner result is Result<StaticSoundData, String>
+                Err(panic_msg) => Err(panic_msg), // Panic occurred
+            };
+            
+            match task_id {
+                LoadingTask::PlaylistSong(index) => {
+                    self.pending_song_index = None;
+                    match result {
+                        Ok(sound_data) => {
+                            let name = &self.song_names[index];
+                            match self.audio_manager.play(sound_data.clone()) {
+                                Ok(handle) => {
+                                    println!("Now playing: {}", name);
+                                    self.current_handle = Some(handle);
+                                    self.current_decoded_song = Some(sound_data);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to play {}: {}", name, e);
+                                    self.current_handle = None;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to decode playlist song at index {}: {}", index, e);
+                            self.current_handle = None;
+                        }
+                    }
+                }
+                LoadingTask::GameOverSong => {
+                    self.pending_game_over = false;
+                    match result {
+                        Ok(sound_data) => {
+                            self.game_over_decoded = Some(sound_data);
+                            if let Some(ref sound_data) = self.game_over_decoded {
+                                match self.audio_manager.play(sound_data.clone()) {
+                                    Ok(handle) => {
+                                        println!("Playing game over song");
+                                        self.game_over_handle = Some(handle);
+                                    }
+                                    Err(e) => eprintln!("Failed to play game over song: {}", e),
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to decode game over song: {}", e);
+                        }
+                    }
+                }
+                LoadingTask::TestSound => {
+                    // Old test sound handler - this shouldn't be used anymore
+                    // But keeping for backward compatibility
+                    match result {
+                        Ok(sound_data) => {
+                            if let Ok(handle) = self.audio_manager.play(sound_data.clone()) {
+                                self.current_handle = Some(handle);
+                                self.current_decoded_song = Some(sound_data);
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to decode test sound: {}", e),
+                    }
+                }
+            }
+        }
+
         if self.muted || !self.is_loaded() {
             return;
         }
@@ -183,8 +272,10 @@ impl MusicManager {
             return;
         }
 
-        // Check if current playlist song has finished
-        let song_finished = if let Some(ref handle) = self.current_handle {
+        // Check if current playlist song has finished (and not loading)
+        let song_finished = if self.pending_song_index.is_some() {
+            false // Don't advance if we're still loading
+        } else if let Some(ref handle) = self.current_handle {
             handle.state() == PlaybackState::Stopped
         } else {
             true // No song playing, but playlist is active, so start one
@@ -228,21 +319,17 @@ impl MusicManager {
         // Stop any existing game over sound before playing new one
         self.stop_game_over_song();
 
-        // Load game over sound on demand
-        if self.game_over_decoded.is_none() {
-            println!("Decoding game over sound");
-            match Self::load_audio_data_from_bytes(&self.game_over_bytes) {
-                Ok(data) => {
-                    self.game_over_decoded = Some(data);
-                }
-                Err(e) => {
-                    eprintln!("Failed to decode game over song: {}", e);
-                    return;
-                }
-            }
-        }
-
-        if let Some(ref sound_data) = self.game_over_decoded {
+        // Load game over sound on demand in background
+        if self.game_over_decoded.is_none() && !self.pending_game_over {
+            println!("Decoding game over sound in background");
+            self.pending_game_over = true;
+            let bytes = self.game_over_bytes.clone();
+            self.loading_task.execute(LoadingTask::GameOverSong, move || {
+                Self::load_audio_data_from_bytes(&bytes)
+                    .map_err(|e| e.to_string())
+            });
+        } else if let Some(ref sound_data) = self.game_over_decoded {
+            // If already decoded, play immediately
             match self.audio_manager.play(sound_data.clone()) {
                 Ok(handle) => {
                     println!("Playing game over song");
@@ -263,31 +350,16 @@ impl MusicManager {
         // Unload previous song (free memory)
         self.current_decoded_song = None;
 
-        // Load current song on demand
+        // Load current song on demand in background
         let (filename, bytes) = &self.song_bytes[self.current_index];
-        println!("Decoding: {}", filename);
-
-        match Self::load_audio_data_from_bytes(bytes) {
-            Ok(sound_data) => {
-                // Keep decoded song until next one loads
-                let name = &self.song_names[self.current_index];
-                match self.audio_manager.play(sound_data.clone()) {
-                    Ok(handle) => {
-                        println!("Now playing: {}", name);
-                        self.current_handle = Some(handle);
-                        self.current_decoded_song = Some(sound_data);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to play {}: {}", name, e);
-                        self.current_handle = None;
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to decode {}: {}", filename, e);
-                self.current_handle = None;
-            }
-        }
+        println!("Decoding: {} (in background)", filename);
+        self.pending_song_index = Some(self.current_index);
+        let bytes_clone = bytes.clone();
+        let index = self.current_index;
+        self.loading_task.execute(LoadingTask::PlaylistSong(index), move || {
+            Self::load_audio_data_from_bytes(&bytes_clone)
+                .map_err(|e| e.to_string())
+        });
     }
 
     fn play_next_song(&mut self) {
@@ -317,28 +389,83 @@ impl MusicManager {
         self.stop_game_over_song();
     }
 
-    // Test sound methods kept but ensured they affect state correctly
-    pub fn test_sound(&mut self) {
-        self.stop_current_song();
-        self.playlist_active = false; // Test sound is not the playlist
+    /// Prepare test sound for volume control - loads synchronously and keeps in memory
+    /// Call this when volume control screen opens
+    /// This is synchronous since it only happens once when opening the screen
+    pub fn prepare_test_sound(&mut self) {
+        // Only load if not already loaded
+        if self.test_song_decoded.is_some() {
+            return;
+        }
 
         if !self.song_bytes.is_empty() {
-            // Load first song for testing
             let (filename, bytes) = &self.song_bytes[0];
+            println!("Preparing test song: {}", filename);
             match Self::load_audio_data_from_bytes(bytes) {
                 Ok(sound_data) => {
-                    if let Ok(handle) = self.audio_manager.play(sound_data.clone()) {
-                        self.current_handle = Some(handle);
-                        // Keep decoded for test playback
-                        self.current_decoded_song = Some(sound_data);
-                    }
+                    self.test_song_decoded = Some(sound_data);
+                    println!("Test song loaded and ready");
                 }
-                Err(e) => eprintln!("Failed to decode {} for test: {}", filename, e),
+                Err(e) => {
+                    eprintln!("Failed to decode test song: {}", e);
+                }
             }
         }
     }
 
-    pub fn stop_test_sound(&mut self) {
+    /// Unload test sound - call this when volume control screen closes
+    pub fn unload_test_sound(&mut self) {
+        self.stop_test_sound();
+        self.test_song_decoded = None;
+        println!("Test song unloaded");
+    }
+
+    /// Play test sound using the pre-loaded test song
+    /// This is instant since the song is already decoded
+    pub fn test_sound(&mut self) {
+        // Stop any current playlist song
         self.stop_current_song();
+        self.playlist_active = false; // Test sound is not the playlist
+
+        // Use pre-loaded test song if available
+        if let Some(ref sound_data) = self.test_song_decoded {
+            // Stop previous test sound if playing
+            if let Some(mut handle) = self.test_song_handle.take() {
+                let _ = handle.stop(Tween {
+                    duration: std::time::Duration::from_millis(100),
+                    ..Default::default()
+                });
+            }
+
+            match self.audio_manager.play(sound_data.clone()) {
+                Ok(handle) => {
+                    self.test_song_handle = Some(handle);
+                    println!("Playing test sound (pre-loaded)");
+                }
+                Err(e) => eprintln!("Failed to play test sound: {}", e),
+            }
+        } else {
+            // Fallback: if not prepared, load on demand (shouldn't happen normally)
+            eprintln!("Warning: test_sound() called but test song not prepared. Use prepare_test_sound() first.");
+            if !self.song_bytes.is_empty() {
+                let (filename, bytes) = &self.song_bytes[0];
+                println!("Decoding {} for test on demand (should prepare first)", filename);
+                let bytes_clone = bytes.clone();
+                self.loading_task.execute(LoadingTask::TestSound, move || {
+                    Self::load_audio_data_from_bytes(&bytes_clone)
+                        .map_err(|e| e.to_string())
+                });
+            }
+        }
+    }
+
+    /// Stop test sound playback (does not unload the decoded song)
+    pub fn stop_test_sound(&mut self) {
+        if let Some(mut handle) = self.test_song_handle.take() {
+            let _ = handle.stop(Tween {
+                duration: std::time::Duration::from_millis(100),
+                ..Default::default()
+            });
+        }
     }
 }

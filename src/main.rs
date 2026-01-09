@@ -1,4 +1,5 @@
 mod background;
+mod background_task;
 mod coordinate_system;
 mod debug;
 mod game;
@@ -220,6 +221,7 @@ fn main() {
     // Create volume control screen
     let mut volume_control_screen = VolumeControlScreen::new(&volume_manager);
     let mut previous_state = GameState::Title; // Track state before opening volume control
+    let mut was_in_volume_control = false; // Track if we were in volume control last frame
 
     // Create game over screen
     let mut game_over_screen = GameOverScreen::new();
@@ -300,6 +302,15 @@ fn main() {
                 debug_overlay.update(input, timer.delta, screen.x, screen.y);
             }
 
+            // Track state transitions for volume control
+            if state != GameState::VolumeControl && was_in_volume_control {
+                // We just left volume control (e.g., state changed unexpectedly) - unload test sound
+                if let Some(ref mut music_mgr) = music_manager.get_mut() {
+                    music_mgr.unload_test_sound();
+                }
+                was_in_volume_control = false;
+            }
+
             match state {
                 GameState::Title => {
                     // Update music (check for song transitions)
@@ -326,6 +337,7 @@ fn main() {
                     if volume_button.is_clicked(input, gfx) {
                         previous_state = GameState::Title;
                         state = GameState::VolumeControl;
+                        was_in_volume_control = false; // Will be set to true when we enter VolumeControl state
                     }
 
                     // Check for Enter key to start game
@@ -373,6 +385,7 @@ fn main() {
                     if volume_button.is_clicked(input, gfx) {
                         previous_state = GameState::Playing;
                         state = GameState::VolumeControl;
+                        was_in_volume_control = false; // Will be set to true when we enter VolumeControl state
                     }
 
                     // Restart on R key
@@ -432,6 +445,15 @@ fn main() {
                     }
                 }
                 GameState::VolumeControl => {
+                    // Check if we just entered the volume control screen
+                    if !was_in_volume_control {
+                        // Prepare test sound when entering volume control
+                        if let Some(ref mut music_mgr) = music_manager.get_mut() {
+                            music_mgr.prepare_test_sound();
+                        }
+                    }
+                    was_in_volume_control = true;
+
                     let screen = gfx.screen_size();
                     volume_control_screen.draw(gfx, screen.x, screen.y);
                     mute_button_small.update(gfx);
@@ -454,6 +476,9 @@ fn main() {
                                 screen.x,
                                 screen.y,
                             ) {
+                                // Close button clicked - unload test sound before leaving
+                                music_mgr.unload_test_sound();
+                                was_in_volume_control = false;
                                 state = previous_state;
                             }
                         }

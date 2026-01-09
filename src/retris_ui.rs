@@ -21,22 +21,26 @@ fn window_to_buffer_coords(
 
     // Get DPR - input coordinates are in physical pixels, need to convert to CSS pixels
     let dpr = crate::get_device_pixel_ratio();
-    let css_x = window_x / dpr;
-    let css_y = window_y / dpr;
+    if dpr == 1.0 {
+        return (window_x, window_y);
+    } else {
+        let css_x = window_x / dpr;
+        let css_y = window_y / dpr;
 
-    let rect = canvas.get_bounding_client_rect();
-    let canvas_x = rect.left() as f32;
-    let canvas_y = rect.top() as f32;
-    let css_width = rect.width() as f32;
-    let css_height = rect.height() as f32;
+        let rect = canvas.get_bounding_client_rect();
+        let canvas_x = rect.left() as f32;
+        let canvas_y = rect.top() as f32;
+        let css_width = rect.width() as f32;
+        let css_height = rect.height() as f32;
 
-    let canvas_relative_x = css_x - canvas_x;
-    let canvas_relative_y = css_y - canvas_y;
+        let canvas_relative_x = css_x - canvas_x;
+        let canvas_relative_y = css_y - canvas_y;
 
-    let scale_x = buffer_width / css_width;
-    let scale_y = buffer_height / css_height;
+        let scale_x = buffer_width / css_width;
+        let scale_y = buffer_height / css_height;
 
-    (canvas_relative_x * scale_x, canvas_relative_y * scale_y)
+        (canvas_relative_x * scale_x, canvas_relative_y * scale_y)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
