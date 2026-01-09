@@ -2,6 +2,7 @@ use crate::game_data::ScoreManager;
 use crate::game_ui::GameUI;
 use crate::grid::Grid;
 use crate::sound_manager::SoundManager;
+use crate::tetris_mobile_controller::TetrisMobileController;
 use crate::tetris_shape::TetrisShapeNode;
 use egor::input::Input;
 use egor::render::Graphics;
@@ -35,6 +36,9 @@ pub struct Game {
     grid: Grid,
     score_manager: ScoreManager,
     ui: GameUI,
+    mobile_controller: TetrisMobileController,
+    screen_width: f32,
+    screen_height: f32,
     state: GameState,
     pub is_gameover: bool,
 }
@@ -52,6 +56,9 @@ impl Game {
             ),
             score_manager: ScoreManager::new(),
             ui: GameUI::new(),
+            mobile_controller: TetrisMobileController::new(screen_width, screen_height),
+            screen_width,
+            screen_height,
             state: GameState::Playing,
             is_gameover: false,
         }
@@ -93,7 +100,7 @@ impl Game {
                 // Update the active piece if it exists and isn't stopped
                 if let Some(ref mut piece) = self.active_piece {
                     if !piece.stopped {
-                        piece.update(input, fixed_delta, &mut self.grid, sound_manager);
+                        piece.update(input, fixed_delta, &mut self.grid, sound_manager, &mut self.mobile_controller, self.screen_width, self.screen_height);
                     }
                 }
 
@@ -223,13 +230,20 @@ impl Game {
     }
 
     pub fn draw(&mut self, gfx: &mut Graphics, alpha: f32) {
+        // Update screen dimensions from graphics
+        let screen = gfx.screen_size();
+        if (screen.x - self.screen_width).abs() > 0.1 || (screen.y - self.screen_height).abs() > 0.1 {
+            self.screen_width = screen.x;
+            self.screen_height = screen.y;
+        }
+
         // Draw UI first so it appears behind the grid and pieces
 
         // Draw grid and pieces on top
         self.grid.draw(gfx, alpha);
 
         if let Some(ref mut piece) = self.active_piece {
-            piece.draw(gfx, alpha);
+            piece.draw(gfx, alpha, &mut self.mobile_controller);
         }
 
         self.ui.draw(gfx, &self.score_manager);
@@ -243,5 +257,10 @@ impl Game {
     /// Get a mutable reference to the score manager
     pub fn score_manager_mut(&mut self) -> &mut ScoreManager {
         &mut self.score_manager
+    }
+
+    /// Check if mobile controller quit button was pressed
+    pub fn mobile_quit_pressed(&self) -> bool {
+        self.mobile_controller.quit_pressed()
     }
 }

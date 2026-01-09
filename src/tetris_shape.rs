@@ -1,5 +1,6 @@
 use crate::retris_colors::*;
 use crate::sound_manager::SoundManager;
+use crate::tetris_mobile_controller::TetrisMobileController;
 use egor::input::{Input, KeyCode};
 use egor::math::{Vec2, vec2};
 use egor::render::{Color, Graphics};
@@ -343,7 +344,8 @@ pub struct TetrisShapeNode {
     pub grid_position: Vec2,
     pub grid_width_cells: usize,
     pub grid_height_cells: usize,
-    pub fall_timer: f32, // Accumulator for downward movement
+    pub fall_timer: f32,            // Accumulator for downward movement
+    pub horizontal_move_timer: f32, // Accumulator for horizontal movement
 }
 
 impl TetrisShapeNode {
@@ -386,6 +388,7 @@ impl TetrisShapeNode {
             grid_width_cells,
             grid_height_cells,
             fall_timer: 0.0, // Start at 0 so piece doesn't immediately fall on spawn
+            horizontal_move_timer: 0.0,
         }
     }
 
@@ -413,6 +416,7 @@ impl TetrisShapeNode {
             grid_width_cells,
             grid_height_cells,
             fall_timer: 0.0,
+            horizontal_move_timer: 0.0,
         }
     }
 
@@ -545,25 +549,67 @@ impl TetrisShapeNode {
     }
 
     /// Update the shape - handles input and movement
-    pub fn update(&mut self, input: &Input, fixed_delta: f32, grid: &mut crate::grid::Grid, sound_manager: &mut SoundManager) {
+    pub fn update(
+        &mut self,
+        input: &Input,
+        fixed_delta: f32,
+        grid: &mut crate::grid::Grid,
+        sound_manager: &mut SoundManager,
+        mobile_controller: &mut TetrisMobileController,
+        screen_width: f32,
+        screen_height: f32,
+    ) {
+        // Update mobile controller
+        mobile_controller.update(input, screen_width, screen_height);
+
         // Handle rotation with wall kick
-        if input.key_pressed(KeyCode::Space) {
+        if input.key_pressed(KeyCode::Space) || mobile_controller.rotate_pressed() {
             if self.rotate_clockwise_with_wall_kick(grid) {
                 // Play shuffle sound only if rotation succeeded
                 sound_manager.play_shuffle();
             }
         }
 
-        // Handle horizontal movement - discrete, one cell at a time
-        if input.key_pressed(KeyCode::ArrowLeft) {
-            if self.can_move_horizontal(-1, grid) {
-                self.cell_x -= 1;
-            }
-        }
+        // Handle horizontal movement - timer-based, cells per second
+        // Horizontal movement speed in cells per second (adjustable float)
+        const HORIZONTAL_SPEED: f32 = 10.0; // cells per second
 
-        if input.key_pressed(KeyCode::ArrowRight) {
-            if self.can_move_horizontal(1, grid) {
-                self.cell_x += 1;
+        if !self.stopped {
+            let moving_left = input.key_held(KeyCode::ArrowLeft)
+                || mobile_controller.left_held()
+                || input.swipe_left();
+            let moving_right = input.key_held(KeyCode::ArrowRight)
+                || mobile_controller.right_held()
+                || input.swipe_right();
+
+            // Determine direction: if both are held, don't move (prioritize neither)
+            let direction = if moving_left && !moving_right {
+                Some(-1)
+            } else if moving_right && !moving_left {
+                Some(1)
+            } else {
+                None // Both held or neither held
+            };
+
+            if let Some(dir) = direction {
+                let time_per_cell = 1.0 / HORIZONTAL_SPEED;
+                self.horizontal_move_timer += fixed_delta;
+
+                // Process horizontal movement timer
+                while self.horizontal_move_timer >= time_per_cell {
+                    // Check if we can move in this direction
+                    if self.can_move_horizontal(dir, grid) {
+                        self.cell_x += dir;
+                        self.horizontal_move_timer -= time_per_cell;
+                    } else {
+                        // Can't move, reset timer to prevent accumulation
+                        self.horizontal_move_timer = 0.0;
+                        break;
+                    }
+                }
+            } else {
+                // Not moving, reset timer
+                self.horizontal_move_timer = 0.0;
             }
         }
 
@@ -571,11 +617,12 @@ impl TetrisShapeNode {
         // Velocity is in cells per second, so we move one cell every (1.0 / velocity) seconds
         if !self.stopped && self.velocity > 0 {
             // Triple speed when holding down arrow
-            let effective_velocity = if input.key_held(KeyCode::ArrowDown) {
-                self.velocity * 5
-            } else {
-                self.velocity
-            };
+            let effective_velocity =
+                if input.key_held(KeyCode::ArrowDown) || mobile_controller.down_held() {
+                    self.velocity * 5
+                } else {
+                    self.velocity
+                };
 
             let time_per_cell = 1.0 / effective_velocity as f32;
             self.fall_timer += fixed_delta;
@@ -601,7 +648,14 @@ impl TetrisShapeNode {
     }
 
     /// Draw the shape
-    pub fn draw(&mut self, gfx: &mut Graphics, _alpha: f32) {
+    pub fn draw(
+        &mut self,
+        gfx: &mut Graphics,
+        _alpha: f32,
+        mobile_controller: &mut TetrisMobileController,
+    ) {
+        // Draw mobile controller
+        mobile_controller.draw(gfx);
         const BORDER_WIDTH: f32 = 1.0;
 
         // Get the world position of the piece's cell position (top-left of cell_x, cell_y)

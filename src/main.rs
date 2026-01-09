@@ -11,6 +11,7 @@ mod retris_colors;
 mod retris_ui;
 mod sound_manager;
 mod storage;
+mod tetris_mobile_controller;
 mod tetris_shape;
 mod title_screen;
 mod volume_control_screen;
@@ -355,10 +356,18 @@ fn main() {
                         game = Some(Game::new(screen.x, screen.y));
                     }
 
-                    // Return to title on Escape
+                    // Return to title on Escape, Q key, or mobile quit button
                     if input.key_pressed(KeyCode::Escape) || input.key_pressed(KeyCode::KeyQ) {
                         game = None;
                         state = GameState::Title;
+                    }
+                    
+                    // Check mobile controller quit button
+                    if let Some(ref g) = game {
+                        if g.mobile_quit_pressed() {
+                            game = None;
+                            state = GameState::Title;
+                        }
                     }
                 }
                 GameState::GameOver => {
