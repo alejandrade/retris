@@ -4,7 +4,6 @@ use crate::retris_colors::*;
 use crate::retris_ui::{Button, MuteButton, VolumeSlider};
 use crate::sound_manager::SoundManager;
 use crate::volume_manager::VolumeManager;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::Input;
 use egor::math::vec2;
 use egor::render::Graphics;
@@ -195,7 +194,9 @@ impl LoadingScreen {
         size: f32,
         color: egor::render::Color,
     ) {
-        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        // Use coordinate system with actual screen dimensions
+        let screen = gfx.screen_size();
+        let coords = CoordinateSystem::with_default_offset(screen.x, screen.y);
         
         // Calculate world-space position (centered at x=0)
         let world_x = coords.center_text_x(text, size, 0.5);

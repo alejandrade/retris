@@ -4,7 +4,6 @@ use crate::retris_colors::*;
 use crate::retris_ui::{Button, VolumeSlider};
 use crate::sound_manager::SoundManager;
 use crate::volume_manager::VolumeManager;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::Input;
 use egor::math::vec2;
 use egor::render::Graphics;
@@ -47,6 +46,8 @@ impl VolumeControlScreen {
         music_manager: &mut MusicManager,
         sound_manager: &mut SoundManager,
         volume_manager: &VolumeManager,
+        screen_width: f32,
+        screen_height: f32,
     ) -> bool {
         music_manager.stop();
         // Update test sound timer
@@ -58,8 +59,13 @@ impl VolumeControlScreen {
             self.test_sound_timer = 0.0;
         }
 
-        // Update music slider
-        if self.music_slider.update(input) {
+        // Update slider positions based on actual screen dimensions
+        self.music_slider.update(screen_width, screen_height);
+        self.sfx_slider.update(screen_width, screen_height);
+        self.close_button.update(screen_width, screen_height);
+
+        // Handle music slider input
+        if self.music_slider.handle_input(input, screen_width, screen_height) {
             volume_manager.set_music_volume(self.music_slider.value());
             music_manager.update_volume();
         }
@@ -71,8 +77,8 @@ impl VolumeControlScreen {
             volume_manager.save();
         }
 
-        // Update SFX slider
-        if self.sfx_slider.update(input) {
+        // Handle SFX slider input
+        if self.sfx_slider.handle_input(input, screen_width, screen_height) {
             volume_manager.set_sfx_volume(self.sfx_slider.value());
             sound_manager.update_volume();
         }
@@ -84,7 +90,7 @@ impl VolumeControlScreen {
         }
 
         // Return true if user clicked Close button
-        if self.close_button.is_clicked(input) {
+        if self.close_button.is_clicked(input, screen_width, screen_height) {
             music_manager.start();
             true
         } else {
@@ -93,13 +99,13 @@ impl VolumeControlScreen {
     }
 
     /// Draw the volume control screen
-    pub fn draw(&self, gfx: &mut Graphics) {
-        let coords =
-            CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+    pub fn draw(&self, gfx: &mut Graphics, screen_width: f32, screen_height: f32) {
+        // Use coordinate system with actual screen dimensions
+        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
 
         // Draw semi-transparent background overlay
         // Since (0,0) is center, we need to position from top-left corner
-        let overlay_size = vec2(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        let overlay_size = vec2(screen_width, screen_height);
         let overlay_pos = coords.top_left_world();
         gfx.rect()
             .at(overlay_pos)
@@ -107,14 +113,14 @@ impl VolumeControlScreen {
             .color(COLOR_DARK_GRAY);
 
         // Draw title
-        self.draw_centered_text(gfx, "VOLUME CONTROL", -200.0, 48.0, COLOR_TEXT_GREEN);
+        self.draw_centered_text(gfx, "VOLUME CONTROL", -200.0, 48.0, COLOR_TEXT_GREEN, screen_width, screen_height);
 
         // Draw sliders
-        self.music_slider.draw(gfx);
-        self.sfx_slider.draw(gfx);
+        self.music_slider.draw(gfx, screen_width, screen_height);
+        self.sfx_slider.draw(gfx, screen_width, screen_height);
 
         // Draw close button
-        self.close_button.draw(gfx);
+        self.close_button.draw(gfx, screen_width, screen_height);
     }
 
     /// Helper to draw centered text
@@ -125,9 +131,11 @@ impl VolumeControlScreen {
         world_y: f32,
         size: f32,
         color: egor::render::Color,
+        screen_width: f32,
+        screen_height: f32,
     ) {
-        let coords =
-            CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        // Use coordinate system with actual screen dimensions
+        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
         let world_x = coords.center_text_x(text, size, 0.5);
         let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 

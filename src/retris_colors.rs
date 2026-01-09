@@ -15,6 +15,7 @@ pub const COLOR_DARK_GRAY: Color = Color::new([0.4, 0.4, 0.4, 1.0]); // Dark gra
 
 // Background
 pub const COLOR_BACKGROUND: Color = Color::new([0.05, 0.05, 0.08, 1.0]); // Dark blue-gray
+pub const COLOR_BACKGROUND_ALPHA: Color = Color::new([0.05, 0.05, 0.08, 0.7]); // Dark blue-gray
 
 // All game piece colors in an array for easy selection
 pub const PIECE_COLORS: [Color; 5] = [

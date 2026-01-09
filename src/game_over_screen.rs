@@ -2,7 +2,6 @@ use crate::coordinate_system::CoordinateSystem;
 use crate::game_data::ScoreManager;
 use crate::retris_colors::*;
 use crate::retris_ui::Button;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::Input;
 use egor::render::Graphics;
 
@@ -23,20 +22,29 @@ impl GameOverScreen {
         }
     }
 
-    pub fn update(&self, input: &Input) -> GameOverAction {
-        if self.quit_button.is_clicked(input) {
+    /// Update button positions based on actual screen dimensions
+    pub fn update(&mut self, screen_width: f32, screen_height: f32) {
+        self.quit_button.update(screen_width, screen_height);
+        self.back_to_menu_button.update(screen_width, screen_height);
+        self.retry_button.update(screen_width, screen_height);
+    }
+    
+    /// Handle input for game over screen
+    pub fn handle_input(&self, input: &Input, screen_width: f32, screen_height: f32) -> GameOverAction {
+        if self.quit_button.is_clicked(input, screen_width, screen_height) {
             GameOverAction::Quit
-        } else if self.back_to_menu_button.is_clicked(input) {
+        } else if self.back_to_menu_button.is_clicked(input, screen_width, screen_height) {
             GameOverAction::BackToMenu
-        } else if self.retry_button.is_clicked(input) {
+        } else if self.retry_button.is_clicked(input, screen_width, screen_height) {
             GameOverAction::Retry
         } else {
             GameOverAction::None
         }
     }
 
-    pub fn draw(&self, gfx: &mut Graphics, score_manager: &ScoreManager) {
-        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+    pub fn draw(&self, gfx: &mut Graphics, score_manager: &ScoreManager, screen_width: f32, screen_height: f32) {
+        // Use coordinate system with actual screen dimensions
+        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
 
         // Draw "GAME OVER" text in the center
         let title_text = "GAME OVER";
@@ -94,10 +102,10 @@ impl GameOverScreen {
             .size(stats_size)
             .color(COLOR_DARK_GRAY);
 
-        // Draw buttons
-        self.quit_button.draw(gfx);
-        self.back_to_menu_button.draw(gfx);
-        self.retry_button.draw(gfx);
+        // Draw buttons (positions should be updated via update() before calling)
+        self.quit_button.draw(gfx, screen_width, screen_height);
+        self.back_to_menu_button.draw(gfx, screen_width, screen_height);
+        self.retry_button.draw(gfx, screen_width, screen_height);
     }
 }
 

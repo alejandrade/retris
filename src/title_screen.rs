@@ -1,11 +1,9 @@
 use crate::coordinate_system::CoordinateSystem;
 use crate::retris_colors::*;
 use crate::tetris_shape::{ShapeName, TetrisShapeNode};
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::{Input, KeyCode};
 use egor::math::vec2;
-use egor::render::Graphics;
-
+use egor::render::{Color, Graphics};
 
 /// Target Y position in screen coordinates (middle of screen)
 const TARGET_Y: f32 = 0.0; // Screen center is at 0,0
@@ -20,35 +18,36 @@ fn get_piece_color(index: usize) -> egor::render::Color {
 
 pub struct TitleScreen {
     letters: Vec<TetrisShapeNode>,
-    horizontal_offset: f32,      // Current horizontal offset for bounce animation
-    horizontal_velocity: f32,    // Velocity for bounce back
-    vertical_offset: f32,        // Current vertical offset for drop/bounce animation
-    vertical_velocity: f32,      // Velocity for vertical bounce
-    rotation_angle: f32,         // Current rotation angle (in radians)
-    rotation_velocity: f32,      // Rotation velocity for spin animation
-    float_timer: f32,            // Timer for floating animation
-    high_score: u64,             // High score to display
+    horizontal_offset: f32,   // Current horizontal offset for bounce animation
+    horizontal_velocity: f32, // Velocity for bounce back
+    vertical_offset: f32,     // Current vertical offset for drop/bounce animation
+    vertical_velocity: f32,   // Velocity for vertical bounce
+    rotation_angle: f32,      // Current rotation angle (in radians)
+    rotation_velocity: f32,   // Rotation velocity for spin animation
+    float_timer: f32,         // Timer for floating animation
+    high_score: u64,          // High score to display
 }
 
 impl TitleScreen {
     pub fn new() -> Self {
         use crate::storage::Storage;
-        
+
         let game_data = Storage::load_game_data();
 
-        // Calculate appropriate cell size based on screen width
-        // We have 6 letters, each ~3 cells wide + spacing between them
         const NUM_LETTERS: f32 = 6.0;
         const LETTER_WIDTH_CELLS: f32 = 3.0; // Each letter is 3 cells wide
         const PADDING: f32 = 80.0; // Leave padding on sides
 
-        // Calculate cell size to fit all letters on screen
-        let available_width = SCREEN_WIDTH as f32 - PADDING;
+        // Use default screen dimensions for initial calculation (will be updated via update_screen_size)
+        let default_width = 640.0;
+        let default_height = 1048.0;
+        let coords = CoordinateSystem::with_default_offset(default_width, default_height);
+        let screen_width = coords.screen_width();
+        let available_width = screen_width - PADDING;
         let total_cells =
             (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
         let cell_size = available_width / total_cells;
 
-        // Each letter is roughly 3 cells wide, 5 cells tall
         let letter_width = LETTER_WIDTH_CELLS * cell_size;
         let letter_spacing = LETTER_SPACING * cell_size;
 
@@ -65,16 +64,21 @@ impl TitleScreen {
         let num_letters = letter_shapes.len() as f32;
         let total_width = (num_letters * letter_width) + ((num_letters - 1.0) * letter_spacing);
 
-        // Position letters in the center of the screen (0,0 is screen center)
-        let start_x = -total_width / 2.0 + letter_width / 2.0;
+        // Position letters in the center of the screen using coordinate system
+        // start_x is the center X position of the first letter (0,0 is screen center)
+        let start_x = coords.center_x() - total_width / 2.0 + letter_width / 2.0;
         let start_y = TARGET_Y; // Center vertically
 
         // Create a small virtual grid just for the shape positioning system
         let grid_width_cells = 200;
         let grid_height_cells = 100;
-        
-        // Position grid so letters appear at center
-        let grid_position = vec2(start_x - (100.0 * cell_size), start_y);
+
+        // Position grid using coordinate system's left edge (respecting aspect ratio)
+        // The grid_position is the world position of grid cell (0,0)
+        // We use the left edge of the playing field (respecting aspect ratio) as reference
+        let left_edge = coords.left_edge_x();
+        let grid_position_x = left_edge - (50.0 * cell_size); // Offset left to give room for grid
+        let grid_position = vec2(grid_position_x, start_y);
 
         let mut letters = Vec::new();
         let mut current_x_world = start_x;
@@ -95,10 +99,10 @@ impl TitleScreen {
                 shape_name,
                 color,
             );
-            
+
             // Mark as already stopped (no falling animation)
             letter.stopped = true;
-            
+
             letters.push(letter);
 
             // Move to next letter position
@@ -118,74 +122,142 @@ impl TitleScreen {
         }
     }
 
+    /// Update title screen positions based on actual screen dimensions
+    pub fn update_screen_size(&mut self, screen_width: f32, screen_height: f32) {
+        const NUM_LETTERS: f32 = 6.0;
+        const LETTER_WIDTH_CELLS: f32 = 3.0;
+        const PADDING: f32 = 80.0;
+
+        // Use coordinate system with actual screen dimensions
+        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
+        // Use playing field width (based on aspect ratio) for letter sizing
+        let playing_field_width = coords.playing_field_width();
+        let available_width = playing_field_width - PADDING;
+        let total_cells =
+            (NUM_LETTERS * LETTER_WIDTH_CELLS) + ((NUM_LETTERS - 1.0) * LETTER_SPACING);
+        let cell_size = available_width / total_cells;
+
+        let letter_width = LETTER_WIDTH_CELLS * cell_size;
+        let letter_spacing = LETTER_SPACING * cell_size;
+        let num_letters = self.letters.len() as f32;
+        let total_width = (num_letters * letter_width) + ((num_letters - 1.0) * letter_spacing);
+
+        // Center letters in the screen using coordinate system's center (0,0)
+        // start_x is the center X position of the first letter
+        let start_x = coords.center_x() - total_width / 2.0 + letter_width / 2.0;
+        let start_y = TARGET_Y;
+
+        // Calculate grid position using coordinate system's left edge
+        // Grid position should be set relative to the playing field (respecting aspect ratio)
+        // We want the grid to start from a known position relative to the screen edges
+        let grid_width_cells = 200;
+        let grid_height_cells = 100;
+
+        // Set grid_position so that letters can be positioned correctly
+        // The grid_position is the world position of grid cell (0,0)
+        // We want the first letter's left edge to align with (start_x - letter_width/2.0)
+        // But we also need some offset for the grid system
+        // Let's use the left edge of the playing field as a reference point
+        let left_edge = coords.left_edge_x();
+        // Position grid so that when we calculate cell positions, letters center correctly
+        // Offset grid to the left to give room for positioning
+        let grid_position_x = left_edge - (50.0 * cell_size);
+        let grid_position = vec2(grid_position_x, start_y);
+
+        // Update each letter's position
+        let mut current_x_world = start_x;
+        for letter in self.letters.iter_mut() {
+            // Calculate cell_x such that the letter's left edge aligns correctly
+            // world_position() returns top-left of cell at (cell_x, cell_y)
+            // We want the letter's center at current_x_world
+            // Letter center = (grid_position.x + cell_x * cell_size) + letter_width/2.0
+            // So: current_x_world = (grid_position.x + cell_x * cell_size) + letter_width/2.0
+            // cell_x = (current_x_world - letter_width/2.0 - grid_position.x) / cell_size
+            let cell_x =
+                ((current_x_world - letter_width / 2.0 - grid_position.x) / cell_size) as i32;
+            let cell_y = -2;
+
+            // Update the letter's cell position and size
+            letter.cell_x = cell_x;
+            letter.cell_y = cell_y;
+            letter.cell_size = cell_size;
+            letter.grid_position = grid_position;
+            letter.grid_width_cells = grid_width_cells;
+            letter.grid_height_cells = grid_height_cells;
+
+            // Move to next letter position
+            current_x_world += letter_width + letter_spacing;
+        }
+    }
+
     pub fn update(&mut self, input: &Input, fixed_delta: f32) {
         // Update floating animation timer
         self.float_timer += fixed_delta;
-        
+
         // Handle interactive controls
-        
+
         // Arrow Left: bounce left
         if input.key_pressed(KeyCode::ArrowLeft) {
             self.horizontal_offset = -30.0; // Shift left
             self.horizontal_velocity = 0.0;
         }
-        
+
         // Arrow Right: bounce right
         if input.key_pressed(KeyCode::ArrowRight) {
             self.horizontal_offset = 30.0; // Shift right
             self.horizontal_velocity = 0.0;
         }
-        
+
         // Space: spin
         if input.key_pressed(KeyCode::Space) {
             self.rotation_velocity += std::f32::consts::TAU * 2.0; // Add one full rotation
         }
-        
+
         // Arrow Down: drop and bounce
         if input.key_pressed(KeyCode::ArrowDown) {
             self.vertical_offset = 50.0; // Drop down
             self.vertical_velocity = 0.0;
         }
-        
+
         // Update horizontal bounce-back animation
         const SPRING_STIFFNESS: f32 = 200.0; // How quickly it springs back
         const DAMPING: f32 = 10.0; // Damping to prevent infinite oscillation
-        
+
         let spring_force = -self.horizontal_offset * SPRING_STIFFNESS * fixed_delta;
         let damping_force = -self.horizontal_velocity * DAMPING * fixed_delta;
-        
+
         self.horizontal_velocity += spring_force + damping_force;
         self.horizontal_offset += self.horizontal_velocity * fixed_delta;
-        
+
         // Stop small oscillations
         if self.horizontal_offset.abs() < 0.1 && self.horizontal_velocity.abs() < 1.0 {
             self.horizontal_offset = 0.0;
             self.horizontal_velocity = 0.0;
         }
-        
+
         // Update vertical bounce-back animation
         let vertical_spring_force = -self.vertical_offset * SPRING_STIFFNESS * fixed_delta;
         let vertical_damping_force = -self.vertical_velocity * DAMPING * fixed_delta;
-        
+
         self.vertical_velocity += vertical_spring_force + vertical_damping_force;
         self.vertical_offset += self.vertical_velocity * fixed_delta;
-        
+
         // Stop small oscillations
         if self.vertical_offset.abs() < 0.1 && self.vertical_velocity.abs() < 1.0 {
             self.vertical_offset = 0.0;
             self.vertical_velocity = 0.0;
         }
-        
+
         // Update rotation animation
         const ROTATION_DAMPING: f32 = 5.0;
         self.rotation_angle += self.rotation_velocity * fixed_delta;
         self.rotation_velocity *= 1.0 - (ROTATION_DAMPING * fixed_delta);
-        
+
         // Normalize rotation angle to prevent overflow
         if self.rotation_angle.abs() > std::f32::consts::TAU * 10.0 {
             self.rotation_angle = self.rotation_angle % std::f32::consts::TAU;
         }
-        
+
         // Stop small rotations
         if self.rotation_velocity.abs() < 0.1 {
             self.rotation_velocity = 0.0;
@@ -194,37 +266,53 @@ impl TitleScreen {
     }
 
     pub fn draw(&mut self, gfx: &mut Graphics, _alpha: f32) {
-        // Store transformation values to avoid borrowing issues
+        let screen = gfx.screen_size();
+        let screen_width = screen.x;
+        let screen_height = screen.y;
         let horizontal_offset = self.horizontal_offset;
+
         let vertical_offset = self.vertical_offset;
         let rotation_angle = self.rotation_angle;
         let float_timer = self.float_timer;
-        
+        let bg_color = COLOR_BACKGROUND_ALPHA; // Dark semi-transparent grey
+
+        let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);
+        gfx.rect()
+            .at(coords.playing_field_top_left())
+            .size(vec2(
+                coords.playing_field_width(),
+                coords.playing_field_height(),
+            ))
+            .color(bg_color);
+
         // Draw letters with position offsets applied
         for letter in self.letters.iter_mut() {
             TitleScreen::draw_letter_with_transform(
                 letter,
                 gfx,
-                horizontal_offset,
+                horizontal_offset + 25.0,
                 vertical_offset,
                 rotation_angle,
                 float_timer,
             );
         }
-        
+
+        // Get screen size once at the start - use actual width and height
+
+        // Create coordinate system once and reuse it (uses actual screen dimensions)
+
         // Draw high score above instructions
         if self.high_score > 0 {
             let text = format!("Your highest score: {}", self.high_score);
             let text_size = 28.0;
-            let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
-            
-            // Position below the title (in world coordinates)
+
+            // Position below the title (centered at x=0 using coordinate system)
             let world_x = coords.center_text_x(&text, text_size, 0.5);
             let world_y = TARGET_Y + 100.0;
-            
-            // Convert to screen coordinates
+
+            // Convert to screen coordinates using the coordinate system
             let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
-            
+
             gfx.text(&text)
                 .at(screen_pos)
                 .size(text_size)
@@ -236,7 +324,7 @@ impl TitleScreen {
         let instructions_y = TARGET_Y + 150.0;
 
         // Calculate text size based on screen height (roughly 2.5% of screen height)
-        let text_size = (SCREEN_HEIGHT as f32 * 0.018).max(14.0).min(24.0);
+        let text_size = (screen_height * 0.018).max(14.0).min(24.0);
 
         let instructions = [
             "Arrow Left/Right: Move",
@@ -249,18 +337,16 @@ impl TitleScreen {
         let line_height = 35.0;
         let start_y = instructions_y;
 
-        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
-        
         for (i, line) in instructions.iter().enumerate() {
             if line.is_empty() {
                 continue;
             }
 
-            // Calculate world-space position (centered at x=0)
+            // Calculate world-space position (centered at x=0 using coordinate system)
             let world_x = coords.center_text_x(line, text_size, 0.5);
             let world_y = start_y + i as f32 * line_height;
 
-            // Convert to screen-space coordinates
+            // Convert to screen-space coordinates using the coordinate system
             let screen_pos = coords.world_to_screen(vec2(world_x, world_y));
 
             gfx.text(line)
@@ -269,7 +355,7 @@ impl TitleScreen {
                 .color(COLOR_TEXT_GREEN);
         }
     }
-    
+
     fn draw_letter_with_transform(
         letter: &mut TetrisShapeNode,
         gfx: &mut Graphics,
@@ -282,25 +368,26 @@ impl TitleScreen {
 
         // Get the world position of the letter (this is the letter's center)
         let world_pos = letter.world_position();
-        
+
         // Apply transformations
         let transformed_pos = vec2(
             world_pos.x + horizontal_offset,
-            world_pos.y + vertical_offset
+            world_pos.y + vertical_offset,
         );
-        
+
         // Add floating animation
         let mut center_pos = transformed_pos;
         const FLOAT_AMPLITUDE: f32 = 8.0;
         const FLOAT_SPEED: f32 = 1.5;
-        let float_offset = (float_timer * FLOAT_SPEED * std::f32::consts::TAU).sin() * FLOAT_AMPLITUDE;
+        let float_offset =
+            (float_timer * FLOAT_SPEED * std::f32::consts::TAU).sin() * FLOAT_AMPLITUDE;
         center_pos.y += float_offset;
 
         // Draw each block of the letter with rotation
         for dimension in letter.shape_name.get_dimensions() {
             // Get the block position relative to the letter's center
             let relative_pos = dimension.position * letter.cell_size;
-            
+
             // Apply rotation around the center
             let rotated_pos = if rotation_angle.abs() > 0.01 {
                 let cos_angle = rotation_angle.cos();
@@ -312,7 +399,7 @@ impl TitleScreen {
             } else {
                 relative_pos
             };
-            
+
             // Final position = center + rotated offset
             let block_world_pos = center_pos + rotated_pos;
 

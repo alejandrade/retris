@@ -1,7 +1,6 @@
 use crate::coordinate_system::CoordinateSystem;
 use crate::game_data::ScoreManager;
 use crate::retris_colors::*;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::math::vec2;
 use egor::render::Graphics;
 
@@ -68,7 +67,9 @@ impl GameUI {
         size: f32,
         color: egor::render::Color,
     ) {
-        let coords = CoordinateSystem::with_default_offset(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+        // Use coordinate system with actual screen dimensions
+        let screen = gfx.screen_size();
+        let coords = CoordinateSystem::with_default_offset(screen.x, screen.y);
         
         // Calculate world-space position (centered at x=0)
         let world_x = coords.center_text_x(text, size, 0.5);

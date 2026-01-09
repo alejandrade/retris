@@ -32,8 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-pub const SCREEN_WIDTH: u32 = 640;
-pub const SCREEN_HEIGHT: u32 = 1048;
+// Screen size is now dynamic and obtained from gfx.screen_size() at runtime
 
 // Boolean flag that JavaScript can set to request music start
 #[cfg(target_arch = "wasm32")]
@@ -185,6 +184,7 @@ fn main() {
             (None, None)
         }
     };
+
     // Create small mute button for bottom right
     let mut mute_button_small = MuteButton::for_bottom_right();
 
@@ -196,16 +196,21 @@ fn main() {
     let mut previous_state = GameState::Title; // Track state before opening volume control
 
     // Create game over screen
-    let game_over_screen = GameOverScreen::new();
+    let mut game_over_screen = GameOverScreen::new();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if state == GameState::Title {
+            music_manager.start();
+        }
+    }
 
     App::new()
         .title("Retris")
-        .screen_size_centered(SCREEN_WIDTH, SCREEN_HEIGHT)
-        .resizable(false)
+        //.screen_size_centered(640, 1048) // Initial size
+        .maximized(true)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
-
             // Check if JavaScript requested to start music/audio (only once)
             // This is when we initialize the audio managers in WASM
             #[cfg(target_arch = "wasm32")]
@@ -256,6 +261,8 @@ fn main() {
                 volume_button.load_textures(gfx);
             }
             // Update and draw animated starfield background
+            let screen = gfx.screen_size();
+            background.update_screen_size(screen.x, screen.y);
             background.update(timer.delta);
             background.draw(gfx);
 
@@ -276,7 +283,10 @@ fn main() {
                     }
 
                     title_screen.update(input, timer.delta);
+                    let screen = gfx.screen_size();
+                    title_screen.update_screen_size(screen.x, screen.y);
                     title_screen.draw(gfx, timer.delta);
+                    volume_button.update(gfx);
                     volume_button.draw(gfx);
 
                     if volume_button.is_clicked(input) {
@@ -286,7 +296,8 @@ fn main() {
 
                     // Check for Enter key to start game
                     if input.key_pressed(KeyCode::Enter) {
-                        game = Some(Game::new());
+                        let screen = gfx.screen_size();
+                        game = Some(Game::new(screen.x, screen.y));
                         state = GameState::Playing;
                     }
                 }
@@ -318,6 +329,10 @@ fn main() {
                         }
                     }
 
+                    // Update button positions based on screen dimensions
+                    mute_button_small.update(gfx);
+                    volume_button.update(gfx);
+
                     // Handle mute button toggle
                     if mute_button_small.is_clicked(input) {
                         mute_button_small.toggle();
@@ -338,7 +353,8 @@ fn main() {
 
                     // Restart on R key
                     if input.key_pressed(KeyCode::KeyR) {
-                        game = Some(Game::new());
+                        let screen = gfx.screen_size();
+                        game = Some(Game::new(screen.x, screen.y));
                     }
 
                     // Return to title on Escape
@@ -351,8 +367,10 @@ fn main() {
                     // Update music (check for song transitions)
                     music_manager.update();
 
-                    // Handle game over screen actions
-                    match game_over_screen.update(input) {
+                    // Update and handle game over screen actions
+                    let screen = gfx.screen_size();
+                    game_over_screen.update(screen.x, screen.y);
+                    match game_over_screen.handle_input(input, screen.x, screen.y) {
                         GameOverAction::Quit => {
                             // Exit the application
                             std::process::exit(0);
@@ -366,7 +384,8 @@ fn main() {
                         GameOverAction::Retry => {
                             // Resume regular playlist when retrying (will check muted internally)
                             music_manager.start();
-                            game = Some(Game::new());
+                            let screen = gfx.screen_size();
+                            game = Some(Game::new(screen.x, screen.y));
                             state = GameState::Playing;
                         }
                         GameOverAction::None => {
@@ -376,11 +395,14 @@ fn main() {
 
                     // Draw game over screen with score details
                     if let Some(ref g) = game {
-                        game_over_screen.draw(gfx, g.score_manager());
+                        let screen = gfx.screen_size();
+                        game_over_screen.draw(gfx, g.score_manager(), screen.x, screen.y);
                     }
                 }
                 GameState::VolumeControl => {
-                    volume_control_screen.draw(gfx);
+                    let screen = gfx.screen_size();
+                    volume_control_screen.draw(gfx, screen.x, screen.y);
+                    mute_button_small.update(gfx);
                     if mute_button_small.is_clicked(input) {
                         mute_button_small.toggle();
                         let is_muted = mute_button_small.is_muted();
@@ -397,6 +419,8 @@ fn main() {
                                 music_mgr,
                                 sound_mgr,
                                 &volume_manager,
+                                screen.x,
+                                screen.y,
                             ) {
                                 state = previous_state;
                             }

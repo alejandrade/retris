@@ -3,7 +3,6 @@ use crate::game_ui::GameUI;
 use crate::grid::Grid;
 use crate::sound_manager::SoundManager;
 use crate::tetris_shape::TetrisShapeNode;
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use egor::input::Input;
 use egor::render::Graphics;
 
@@ -41,12 +40,12 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new() -> Self {
+    pub fn new(screen_width: f32, screen_height: f32) -> Self {
         Self {
             active_piece: None,
             grid: Grid::new(
-                SCREEN_WIDTH as f32,
-                SCREEN_HEIGHT as f32,
+                screen_width,
+                screen_height,
                 GRID_WIDTH_CELLS,
                 GRID_HEIGHT_CELLS,
                 MIN_PADDING,
