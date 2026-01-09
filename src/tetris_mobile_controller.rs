@@ -66,26 +66,35 @@ impl TetrisMobileController {
         let padding = Self::BASE_PADDING * scale;
 
         // Quit button at top center
-        self.quit_button_world_pos = vec2(
-            0.0,
-            -half_height + self.quit_button_size / 2.0 + padding,
-        );
+        self.quit_button_world_pos =
+            vec2(0.0, -half_height + self.quit_button_size / 2.0 + padding);
 
         // Red button position will be set based on grid position (updated in update method)
         // For now, just initialize it
         self.red_button_world_pos = vec2(0.0, 0.0);
     }
 
-    pub fn update(&mut self, input: &Input, screen_width: f32, screen_height: f32, piece_world_x: Option<f32>, piece_world_pos: Option<Vec2>, piece_cell_size: Option<f32>, grid_bottom_y: Option<f32>) {
+    pub fn update(
+        &mut self,
+        input: &Input,
+        screen_width: f32,
+        screen_height: f32,
+        piece_world_x: Option<f32>,
+        piece_world_pos: Option<Vec2>,
+        piece_cell_size: Option<f32>,
+        grid_bottom_y: Option<f32>,
+    ) {
         // Update touch capability status
         self.is_touch_capable = input.is_touch_capable();
-        
+
         // Get device pixel ratio from main module (set by JavaScript)
-        #[cfg(target_arch = "wasm32")]
-        {
-            use crate::get_device_pixel_ratio;
-            self.device_pixel_ratio = get_device_pixel_ratio();
-        }
+        // #[cfg(target_arch = "wasm32")]
+        // {
+        //     use crate::get_device_pixel_ratio;
+        //     self.device_pixel_ratio = get_device_pixel_ratio();
+        // }
+
+        self.device_pixel_ratio = input.dpi() as f32;
 
         if (screen_width - self.screen_width).abs() > 0.1
             || (screen_height - self.screen_height).abs() > 0.1
@@ -94,7 +103,7 @@ impl TetrisMobileController {
             self.screen_height = screen_height;
             self.update_positions();
         }
-        
+
         // Update red button position to be under the grid
         // In world coordinates: negative Y is up, positive Y is down
         // grid_bottom_y is the bottom edge of the visible grid (positive Y value)
@@ -103,7 +112,10 @@ impl TetrisMobileController {
             let scale = Self::scale_factor(self.screen_height);
             let button_spacing = 20.0 * scale; // Space between grid and button
             // Button center should be below grid bottom: grid_bottom + spacing + button_half_size
-            self.red_button_world_pos = vec2(0.0, grid_bottom + button_spacing + self.red_button_size / 2.0);
+            self.red_button_world_pos = vec2(
+                0.0,
+                grid_bottom + button_spacing + self.red_button_size / 2.0,
+            );
         }
 
         // Reset button states
@@ -121,7 +133,16 @@ impl TetrisMobileController {
             let (tx, ty) = input.primary_touch_position();
             let mouse_held = input.mouse_held(MouseButton::Left);
             let mouse_pressed = input.mouse_pressed(MouseButton::Left);
-            self.handle_input(tx, ty, mouse_held, mouse_pressed, &coords, piece_world_x, piece_world_pos, piece_cell_size);
+            self.handle_input(
+                tx,
+                ty,
+                mouse_held,
+                mouse_pressed,
+                &coords,
+                piece_world_x,
+                piece_world_pos,
+                piece_cell_size,
+            );
         }
 
         // Handle mouse input (for testing on desktop)
@@ -130,7 +151,16 @@ impl TetrisMobileController {
         let mouse_just_pressed = input.mouse_pressed(MouseButton::Left);
 
         if mouse_down || mouse_just_pressed {
-            self.handle_input(mx, my, mouse_down, mouse_just_pressed, &coords, piece_world_x, piece_world_pos, piece_cell_size);
+            self.handle_input(
+                mx,
+                my,
+                mouse_down,
+                mouse_just_pressed,
+                &coords,
+                piece_world_x,
+                piece_world_pos,
+                piece_cell_size,
+            );
         }
     }
 
@@ -148,15 +178,15 @@ impl TetrisMobileController {
         // Apply device pixel ratio to input coordinates for consistent comparison
         let adjusted_x = x / self.device_pixel_ratio;
         let adjusted_y = y / self.device_pixel_ratio;
-        
+
         // Convert to world coordinates for comparison
         let touch_world = coords.screen_to_world(vec2(adjusted_x, adjusted_y));
-        
+
         let quit_screen = coords.world_to_screen(self.quit_button_world_pos);
         let quit_button_size = self.quit_button_size;
         let red_button_screen = coords.world_to_screen(self.red_button_world_pos);
         let red_button_size = self.red_button_size;
-        
+
         // Check quit button first (has priority)
         if self.is_point_in_square(adjusted_x, adjusted_y, quit_screen, quit_button_size) {
             if just_pressed {
@@ -164,7 +194,7 @@ impl TetrisMobileController {
             }
             return;
         }
-        
+
         // Check red button (fast drop)
         if self.is_point_in_square(adjusted_x, adjusted_y, red_button_screen, red_button_size) {
             // Red button: fast drop (held)
@@ -173,7 +203,7 @@ impl TetrisMobileController {
             }
             return;
         }
-        
+
         // Check if click is on the piece itself (for rotation)
         if just_pressed {
             if let (Some(piece_pos), Some(cell_size)) = (piece_world_pos, piece_cell_size) {
@@ -181,7 +211,8 @@ impl TetrisMobileController {
                 // Use a generous hitbox (4 cells) to make it easier to tap
                 let piece_hitbox_size = cell_size * 4.0;
                 let piece_screen = coords.world_to_screen(piece_pos);
-                if self.is_point_in_square(adjusted_x, adjusted_y, piece_screen, piece_hitbox_size) {
+                if self.is_point_in_square(adjusted_x, adjusted_y, piece_screen, piece_hitbox_size)
+                {
                     self.rotate_pressed = true;
                     return;
                 }
@@ -214,7 +245,6 @@ impl TetrisMobileController {
                 }
             }
         }
-
     }
 
     fn is_point_in_square(&self, px: f32, py: f32, center: Vec2, size: f32) -> bool {
@@ -230,12 +260,25 @@ impl TetrisMobileController {
 
         // Draw quit button (top center)
         self.draw_quit_button(gfx, &coords, self.quit_button_world_pos);
-        
+
         // Draw red button (under grid)
-        self.draw_bottom_button(gfx, &coords, self.red_button_world_pos, Color::new([1.0, 0.2, 0.2, 0.4]), Color::new([1.0, 0.4, 0.4, 0.6]));
+        self.draw_bottom_button(
+            gfx,
+            &coords,
+            self.red_button_world_pos,
+            Color::new([1.0, 0.2, 0.2, 0.4]),
+            Color::new([1.0, 0.4, 0.4, 0.6]),
+        );
     }
 
-    fn draw_bottom_button(&self, gfx: &mut Graphics, _coords: &CoordinateSystem, world_pos: Vec2, bg_color: Color, border_color: Color) {
+    fn draw_bottom_button(
+        &self,
+        gfx: &mut Graphics,
+        _coords: &CoordinateSystem,
+        world_pos: Vec2,
+        bg_color: Color,
+        border_color: Color,
+    ) {
         let size = self.red_button_size;
         let half_size = size / 2.0;
         let border_width = Self::BASE_BUTTON_BORDER_WIDTH * Self::scale_factor(self.screen_height);
@@ -341,5 +384,4 @@ impl TetrisMobileController {
     pub fn red_button_pressed(&self) -> bool {
         self.red_button_pressed
     }
-
 }
