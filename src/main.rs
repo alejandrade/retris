@@ -148,7 +148,7 @@ fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
-    let mut state = GameState::Title;
+    let mut state = GameState::VolumeControl;
     let mut title_screen = TitleScreen::new();
     let mut game: Option<Game> = None;
     let mut background = Background::new(100);
@@ -187,7 +187,7 @@ fn main() {
 
     // Create volume control screen
     let mut volume_control_screen = VolumeControlScreen::new(&volume_manager);
-    let mut previous_state = GameState::VolumeControl; // Track state before opening volume control
+    let mut previous_state = GameState::Title; // Track state before opening volume control
 
     // Create game over screen
     let game_over_screen = GameOverScreen::new();

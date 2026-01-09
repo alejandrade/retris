@@ -151,25 +151,62 @@
             }, 100);
         }
         
+        // Function to focus the canvas
+        function focusCanvas() {
+            // Wait for canvas to be created by WASM
+            const findCanvas = (maxAttempts = 50) => {
+                let attempts = 0;
+                const checkInterval = setInterval(() => {
+                    attempts++;
+                    const canvas = document.querySelector('canvas');
+                    if (canvas) {
+                        clearInterval(checkInterval);
+                        // Canvas needs tabindex to be focusable
+                        if (!canvas.hasAttribute('tabindex')) {
+                            canvas.setAttribute('tabindex', '0');
+                        }
+                        canvas.focus();
+                        console.log('Canvas focused');
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        console.warn('Canvas not found after', maxAttempts * 100, 'ms');
+                    }
+                }, 100);
+            };
+            findCanvas();
+        }
+        
         // Set up click handler
         overlay.addEventListener('click', function() {
+            // Hide the overlay immediately
+            overlay.classList.add('hidden');
+            
+            // Try to start music
             if (startMusicFn) {
                 startMusicFn();
+                // Focus canvas after music starts
+                focusCanvas();
             } else {
                 // If not found yet, try to find it now
                 const fn = findStartMusic();
                 if (fn) {
                     fn();
+                    startMusicFn = fn; // Cache it for next time
+                    // Focus canvas after music starts
+                    focusCanvas();
                 } else {
                     console.warn('start_music not available yet, will try again');
+                    // Poll for the function and call it when found
                     waitForStartMusic((fn) => {
-                        if (fn) fn();
+                        if (fn) {
+                            fn();
+                            startMusicFn = fn; // Cache it for next time
+                        }
+                        // Focus canvas after attempting to start music
+                        focusCanvas();
                     }, 10);
                 }
             }
-            
-            // Hide the overlay
-            overlay.classList.add('hidden');
         });
         
         // Start looking for the function as soon as page loads
