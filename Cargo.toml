@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# egor = { git = "https://github.com/alejandrade/egor.git", branch = "main", features = ["log", "webgl"] }
-egor = { path = "egor", features = ["log", "webgl"] }
+egor = { git = "https://github.com/alejandrade/egor.git", branch = "main", features = ["log", "webgl"] }
+# egor = { path = "egor", features = ["log", "webgl"] }
 
 js-sys = { version = "0.3.83", optional = true }
 kira = "0.11.0"
