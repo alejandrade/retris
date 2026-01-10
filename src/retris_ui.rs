@@ -4,76 +4,6 @@ use egor::input::{Input, MouseButton};
 use egor::math::vec2;
 use egor::render::Graphics;
 
-/// Convert window coordinates to buffer coordinates
-/// Handles DPR, canvas offset, and CSS-to-buffer scaling
-#[cfg(target_arch = "wasm32")]
-fn window_to_buffer_coords(
-    window_x: f32,
-    window_y: f32,
-    buffer_width: f32,
-    buffer_height: f32,
-) -> (f32, f32) {
-    use wasm_bindgen::JsCast;
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
-    let canvas = document.query_selector("canvas").unwrap().unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-
-    // Get DPR - input coordinates are in physical pixels, need to convert to CSS pixels
-    let dpr = crate::get_device_pixel_ratio();
-    if dpr == 1.0 {
-        return (window_x, window_y);
-    } else {
-        let css_x = window_x / dpr;
-        let css_y = window_y / dpr;
-
-        let rect = canvas.get_bounding_client_rect();
-        let canvas_x = rect.left() as f32;
-        let canvas_y = rect.top() as f32;
-        let css_width = rect.width() as f32;
-        let css_height = rect.height() as f32;
-
-        let canvas_relative_x = css_x - canvas_x;
-        let canvas_relative_y = css_y - canvas_y;
-
-        let scale_x = buffer_width / css_width;
-        let scale_y = buffer_height / css_height;
-
-        (canvas_relative_x * scale_x, canvas_relative_y * scale_y)
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn window_to_buffer_coords(
-    window_x: f32,
-    window_y: f32,
-    _buffer_width: f32,
-    _buffer_height: f32,
-) -> (f32, f32) {
-    (window_x, window_y)
-}
-
-/// Public version for debug module
-#[cfg(target_arch = "wasm32")]
-pub fn window_to_buffer_coords_detailed(
-    window_x: f32,
-    window_y: f32,
-    buffer_width: f32,
-    buffer_height: f32,
-) -> (f32, f32) {
-    window_to_buffer_coords(window_x, window_y, buffer_width, buffer_height)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn window_to_buffer_coords_detailed(
-    window_x: f32,
-    window_y: f32,
-    _buffer_width: f32,
-    _buffer_height: f32,
-) -> (f32, f32) {
-    (window_x, window_y)
-}
-
 /// Button position in both coordinate systems
 pub struct ButtonPosition {
     pub world_x: f32, // For drawing (0,0 = center)
@@ -249,9 +179,9 @@ impl MuteButton {
             return false;
         }
 
-        let (mx, my) = input.mouse_position();
+        // Coordinates from input are now automatically in buffer space
+        let (buffer_x, buffer_y) = input.mouse_position();
         let screen = gfx.screen_size();
-        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen.x, screen.y);
 
         // Convert buffer coords to world coords for comparison
         let coords = CoordinateSystem::with_default_offset(screen.x, screen.y);
@@ -370,8 +300,8 @@ impl VolumeSlider {
     /// Returns true if value changed significantly
     /// Note: update() should be called first to ensure position is current
     pub fn handle_input(&mut self, input: &Input, screen_width: f32, screen_height: f32) -> bool {
-        let (mx, my) = input.mouse_position();
-        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen_width, screen_height);
+        // Coordinates from input are now automatically in buffer space
+        let (buffer_x, buffer_y) = input.mouse_position();
 
         let mouse_pressed = input.mouse_pressed(MouseButton::Left);
         let mouse_released = input.mouse_released(MouseButton::Left);
@@ -529,8 +459,8 @@ impl Button {
             return false;
         }
 
-        let (mx, my) = input.mouse_position();
-        let (buffer_x, buffer_y) = window_to_buffer_coords(mx, my, screen_width, screen_height);
+        // Coordinates from input are now automatically in buffer space
+        let (buffer_x, buffer_y) = input.mouse_position();
 
         // Convert buffer coords to world coords for comparison
         let coords = CoordinateSystem::with_default_offset(screen_width, screen_height);

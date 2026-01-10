@@ -163,16 +163,9 @@ impl TetrisMobileController {
         piece_world_pos: Option<Vec2>,
         piece_cell_size: Option<f32>,
     ) {
-        // Convert window coordinates to buffer coordinates using the shared helper
-        let (buffer_x, buffer_y) = crate::retris_ui::window_to_buffer_coords_detailed(
-            x,
-            y,
-            self.screen_width,
-            self.screen_height,
-        );
-
-        // Convert to world coordinates for comparison
-        let touch_world = coords.screen_to_world(vec2(buffer_x, buffer_y));
+        // Coordinates from input are already in buffer space (converted by egor library)
+        // Convert buffer coordinates to world coordinates for comparison
+        let touch_world = coords.screen_to_world(vec2(x, y));
 
         // Check quit button first (has priority) - use world coordinates
         let quit_half = self.quit_button_size / 2.0;

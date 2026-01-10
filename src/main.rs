@@ -225,10 +225,10 @@ fn main() {
 
     // Create game over screen
     let mut game_over_screen = GameOverScreen::new();
-    
+
     // Create debug overlay
     let mut debug_overlay = DebugOverlay::new();
-    
+
     #[cfg(not(target_arch = "wasm32"))]
     {
         if state == GameState::Title {
@@ -239,6 +239,7 @@ fn main() {
     App::new()
         .title("Retris")
         .screen_size(568, 1136)
+        .max_surface_size(640, 1136)
         .vsync(true)
         .run(move |gfx, input, timer| {
             let is_focused = input.has_focus();
@@ -519,7 +520,7 @@ fn main() {
                     }
                 }
             }
-            
+
             // Draw debug overlay (on top of everything) - only if debug enabled
             if DEBUG_ENABLED {
                 let screen = gfx.screen_size();

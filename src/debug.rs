@@ -41,49 +41,29 @@ impl DebugOverlay {
             input.mouse_position()
         };
 
-        // Calculate adjusted coordinates with detailed logging
+        // Coordinates from input are already in buffer space (converted by egor library)
+        let (adjusted_x, adjusted_y) = (input_x, input_y);
+
+        // Log debug info on click
         #[cfg(target_arch = "wasm32")]
-        let (adjusted_x, adjusted_y) = {
+        if is_pressed {
             use wasm_bindgen::JsCast;
+            let window = web_sys::window().unwrap();
+            let document = window.document().unwrap();
+            let canvas = document.query_selector("canvas").unwrap().unwrap();
+            let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+            let dpr = crate::get_device_pixel_ratio();
 
-            let (buffer_x, buffer_y) = crate::retris_ui::window_to_buffer_coords_detailed(
-                input_x, input_y, screen_width, screen_height
+            crate::log!(
+                "🔍 CLICK DEBUG:\n  Buffer coords: ({:.0}, {:.0})\n  DPR: {:.2}x\n  Canvas CSS size: {:.0}×{:.0}\n  Buffer size: {:.0}×{:.0}",
+                adjusted_x, adjusted_y,
+                dpr,
+                canvas.client_width() as f32, canvas.client_height() as f32,
+                canvas.width(), canvas.height()
             );
+        }
 
-            // Log comprehensive debug info on click
-            if is_pressed {
-                let window = web_sys::window().unwrap();
-                let document = window.document().unwrap();
-                let canvas = document.query_selector("canvas").unwrap().unwrap();
-                let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-                let rect = canvas.get_bounding_client_rect();
-                let dpr = crate::get_device_pixel_ratio();
-                let css_x = input_x / dpr;
-                let css_y = input_y / dpr;
-                let canvas_rel_x = css_x - rect.left() as f32;
-                let canvas_rel_y = css_y - rect.top() as f32;
-
-                crate::log!(
-                    "🔍 CLICK DEBUG:\n  Physical px: ({:.0}, {:.0})\n  DPR: {:.2}x\n  CSS px: ({:.0}, {:.0})\n  Canvas offset: ({:.0}, {:.0})\n  Canvas-relative: ({:.0}, {:.0})\n  Canvas CSS size: {:.0}×{:.0}\n  Buffer size: {:.0}×{:.0}\n  Final buffer coords: ({:.0}, {:.0})",
-                    input_x, input_y,
-                    dpr,
-                    css_x, css_y,
-                    rect.left(), rect.top(),
-                    canvas_rel_x, canvas_rel_y,
-                    rect.width(), rect.height(),
-                    canvas.width(), canvas.height(),
-                    buffer_x, buffer_y
-                );
-            }
-
-            (buffer_x, buffer_y)
-        };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (adjusted_x, adjusted_y) = {
-            let _ = (screen_width, screen_height); // Acknowledge unused parameters
-            (input_x, input_y)
-        };
+        let _ = (screen_width, screen_height); // Acknowledge unused parameters
 
         if is_held {
             // Check if this is a new press (timer is None)
