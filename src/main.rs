@@ -23,6 +23,7 @@ use background::Background;
 use debug::DebugOverlay;
 use egor::app::*;
 use egor::input::{KeyCode, MouseButton};
+use egor::math::vec2;
 use game::Game;
 use game_over_screen::{GameOverAction, GameOverScreen};
 use music_manager::MusicManager;
@@ -39,7 +40,7 @@ use wasm_bindgen::prelude::*;
 
 /// Enable debug overlay (DPI display, click squares, etc.)
 /// Set to false for production builds
-const DEBUG_ENABLED: bool = false;
+const DEBUG_ENABLED: bool = true;
 
 // Boolean flag that JavaScript can set to request music start
 #[cfg(target_arch = "wasm32")]
@@ -241,8 +242,23 @@ fn main() {
         .screen_size(568, 1136)
         .max_surface_size(640, 1136)
         .vsync(true)
-        .run(move |gfx, input, timer| {
-            let is_focused = input.has_focus();
+        .run(move |egor, timer| {
+            let mut is_focused = true;
+            let gfx = &mut egor.gfx;
+            let input = egor.input;
+
+            for x in &egor.events {
+                match x {
+                    EgorEvent::Focused(focused) => {
+                        is_focused = *focused;
+                    }
+                    EgorEvent::CloseRequested => {
+                        println!("bye! we closed")
+                    }
+                    _ => {}
+                }
+            }
+
             // Check if JavaScript requested to start music/audio (only once)
             // This is when we initialize the audio managers in WASM
             #[cfg(target_arch = "wasm32")]
