@@ -23,7 +23,6 @@ use background::Background;
 use debug::DebugOverlay;
 use egor::app::*;
 use egor::input::{KeyCode, MouseButton};
-use egor::math::vec2;
 use game::Game;
 use game_over_screen::{GameOverAction, GameOverScreen};
 use music_manager::MusicManager;
